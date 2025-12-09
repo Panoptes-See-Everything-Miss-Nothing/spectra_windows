@@ -4,7 +4,6 @@
 #include <ws2tcpip.h>
 #include <sddl.h>
 #include <shlobj.h>
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,14 +11,14 @@
 #include <filesystem>
 #include <sstream>
 #include <fstream>
+#include <array>
+#include <cstring>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 namespace fs = std::filesystem;
 
-//----------------------------------------------------------
 // UTF-8 JSON ESCAPE
-//----------------------------------------------------------
 std::string JsonEscape(const std::wstring& input)
 {
     int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, input.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -48,9 +47,7 @@ std::string JsonEscape(const std::wstring& input)
     return out.str();
 }
 
-//----------------------------------------------------------
 // Read REG_SZ safely
-//----------------------------------------------------------
 std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
 {
     DWORD type = 0;
@@ -73,9 +70,7 @@ std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
     return data;
 }
 
-//----------------------------------------------------------
 // Installed app structure
-//----------------------------------------------------------
 struct InstalledApp {
     std::wstring displayName;
     std::wstring displayVersion;
@@ -89,9 +84,6 @@ struct InstalledApp {
     std::wstring uninstallString;
 };
 
-//----------------------------------------------------------
-// Read uninstall keys under any registry hive
-//----------------------------------------------------------
 std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring& subkey)
 {
     std::vector<InstalledApp> apps;
@@ -134,9 +126,6 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
     return apps;
 }
 
-//----------------------------------------------------------
-// Get machine name
-//----------------------------------------------------------
 std::wstring GetMachineName()
 {
     WCHAR buf[256];
@@ -146,46 +135,82 @@ std::wstring GetMachineName()
     return L"";
 }
 
-//----------------------------------------------------------
-// Get IP addresses
-//----------------------------------------------------------
 std::vector<std::string> GetIPAddresses()
 {
-    std::vector<std::string> ips;
+    // TO Do - 
+    // 1. Change this to standard fixed size array for optimization
+    // 2. Why IP addresses are blank in JSON??? Bug fix!!
+    std::vector<std::string> ips;   
+    std::array<char, 256> hostname{};
+    const char* ipv4LoopbackAddr = "127.0.0.1";
+    const char* ipv6LoopbackAddr = "::1";
 
-    WSADATA wsa;
-    WSAStartup(MAKEWORD(2, 2), &wsa);
-
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-
-    addrinfo hints{}, * info = nullptr;
-    hints.ai_family = AF_INET;
-
-    if (getaddrinfo(hostname, nullptr, &hints, &info) == 0)
-    {
-        for (auto p = info; p != nullptr; p = p->ai_next)
-        {
-            char ip[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &((sockaddr_in*)p->ai_addr)->sin_addr, ip, sizeof(ip));
-            ips.push_back(ip);
-        }
+    WSADATA wsa{};  // Initialize WinSock
+    WORD wVersionRequired = MAKEWORD(2, 2);
+    
+    if (WSAStartup(wVersionRequired, &wsa) != 0) {
+        return ips;  // return empty
     }
 
-    if (info) freeaddrinfo(info);
+    // Type cast hostname.size() to avoid data loss warning for 64-bit Windows machines.
+    // Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects the second argument to be an int(int namelen).  
+    if (gethostname(hostname.data(), static_cast<int>(hostname.size()) != 0)) {
+        WSACleanup();
+        return ips;
+    }
 
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;      // Resolve IPv4 + IPv6 address family
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo* info = nullptr;
+    if (getaddrinfo(hostname.data(), nullptr, &hints, &info) != 0) {
+        WSACleanup();
+        return ips;
+    }
+
+    // Iterate network interfaces
+    for (addrinfo* p = info; p != nullptr; p = p->ai_next)
+    {
+        char ipBuf[INET6_ADDRSTRLEN] = {};
+
+        if (p->ai_family == AF_INET) {
+            sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
+            if (!inet_ntop(AF_INET, &(ipv4->sin_addr), ipBuf, sizeof(ipBuf))) {
+                continue; // skip bad entries
+            }
+            if (strcmp(ipBuf, ipv4LoopbackAddr) == 0) {
+                continue; // skip IPv4 loopback
+            }
+        }
+        else if (p->ai_family == AF_INET6) {
+            sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
+            if (!inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipBuf, sizeof(ipBuf))) {
+                continue; // skip bad entries safely
+            }
+            if (strcmp(ipBuf, ipv6LoopbackAddr) == 0) {
+                continue; // skip IPv6 loopback
+            }
+        }
+        else {
+            continue; // skip unsupported families
+        }
+
+        ips.emplace_back(ipBuf);
+    }
+
+    freeaddrinfo(info);
     WSACleanup();
+
     return ips;
 }
 
-//----------------------------------------------------------
-// Generate JSON inventory
-//----------------------------------------------------------
+
 std::string GenerateJSON()
 {
     std::map<std::wstring, std::vector<InstalledApp>> userApps;
 
-    // SYSTEM apps
+    // Get system wide installed applications from x64 and WOW6432 registry keys
     auto sys64 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
     auto sys32 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
@@ -195,7 +220,7 @@ std::string GenerateJSON()
     systemApps.insert(systemApps.end(), sys32.begin(), sys32.end());
     userApps[L"SYSTEM"] = systemApps;
 
-    // Per-user apps
+    // Get a list of applications installed for a particular user.
     for (auto& entry : fs::directory_iterator(L"C:\\Users"))
     {
         if (!entry.is_directory()) continue;
@@ -211,8 +236,7 @@ std::string GenerateJSON()
             userApps[username] = apps;
     }
 
-    // Machine info
-    std::wstring machineName = GetMachineName();
+        std::wstring machineName = GetMachineName();
     auto ips = GetIPAddresses();
 
     // JSON Begin
@@ -268,9 +292,6 @@ std::string GenerateJSON()
     return out.str();
 }
 
-//----------------------------------------------------------
-// Write JSON to file
-//----------------------------------------------------------
 void WriteJSONToFile(const std::string& jsonData, const std::wstring& filename = L"inventory.json")
 {
     std::filesystem::path outputPath = std::filesystem::current_path() / filename;
@@ -286,12 +307,9 @@ void WriteJSONToFile(const std::string& jsonData, const std::wstring& filename =
     }
 }
 
-//----------------------------------------------------------
-// MAIN
-//----------------------------------------------------------
 int main()
 {
     std::string jsonData = GenerateJSON();
-    WriteJSONToFile(jsonData); // Writes to "inventory.json" in current directory
+    WriteJSONToFile(jsonData); 
     return 0;
 }
