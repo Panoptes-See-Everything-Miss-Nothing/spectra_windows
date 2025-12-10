@@ -139,7 +139,6 @@ std::vector<std::string> GetIPAddresses()
 {
     // TO Do - 
     // 1. Change this to standard fixed size array for optimization
-    // 2. Why IP addresses are blank in JSON??? Bug fix!!
     std::vector<std::string> ips;   
     std::array<char, 256> hostname{};
     const char* ipv4LoopbackAddr = "127.0.0.1";
@@ -154,7 +153,7 @@ std::vector<std::string> GetIPAddresses()
 
     // Type cast hostname.size() to avoid data loss warning for 64-bit Windows machines.
     // Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects the second argument to be an int(int namelen).  
-    if (gethostname(hostname.data(), static_cast<int>(hostname.size())) != 0) {
+    if (gethostname(hostname.data(), static_cast<int>(hostname.size()) != 0)) {
         WSACleanup();
         return ips;
     }
