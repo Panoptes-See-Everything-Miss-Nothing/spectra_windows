@@ -154,7 +154,7 @@ std::vector<std::string> GetIPAddresses()
 
     // Type cast hostname.size() to avoid data loss warning for 64-bit Windows machines.
     // Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects the second argument to be an int(int namelen).  
-    if (gethostname(hostname.data(), static_cast<int>(hostname.size()) != 0)) {
+    if (gethostname(hostname.data(), static_cast<int>(hostname.size())) != 0) {
         WSACleanup();
         return ips;
     }
