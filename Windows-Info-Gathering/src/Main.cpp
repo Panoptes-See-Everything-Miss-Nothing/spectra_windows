@@ -13,10 +13,31 @@
 #include <fstream>
 #include <array>
 #include <cstring>
+#include <chrono>
+#include <iomanip>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 namespace fs = std::filesystem;
+
+// Helper function for logging errors
+void LogError(const std::string& message)
+{
+    std::cerr << message << std::endl;
+    
+    // Also log to file for production use
+    fs::path logPath = fs::current_path() / "spectra_errors.log";
+    std::ofstream logFile(logPath, std::ios::app);
+
+    if (logFile.is_open()) {
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+        struct tm timeinfo;
+        localtime_s(&timeinfo, &time);
+        logFile << "[" << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S") << "] " << message << std::endl;
+        logFile.close();
+    }
+}
 
 // UTF-8 JSON ESCAPE
 std::string JsonEscape(const std::wstring& input)
@@ -137,25 +158,30 @@ std::wstring GetMachineName()
 
 std::vector<std::string> GetIPAddresses()
 {
-    // TO Do - 
-    // 1. Change this to standard fixed size array for optimization
-    std::vector<std::string> ips;   
-    std::array<char, 256> hostname{};
+    int ipCount = 0;
+    constexpr int HOSTNAME_LEN = 256;
+    constexpr int MAX_IPS = 16;
+    std::array<std::string, MAX_IPS> ipsArray = {};
+    std::array<char, HOSTNAME_LEN> hostname = {};
     const char* ipv4LoopbackAddr = "127.0.0.1";
     const char* ipv6LoopbackAddr = "::1";
-
-    WSADATA wsa{};  // Initialize WinSock
     WORD wVersionRequired = MAKEWORD(2, 2);
-    
-    if (WSAStartup(wVersionRequired, &wsa) != 0) {
-        return ips;  // return empty
+    WSADATA wsa = {};  // Initialize WinSock
+        
+    int wsaStartupResult = WSAStartup(wVersionRequired, &wsa);
+    if (wsaStartupResult != 0) {
+        LogError("WSAStartup failed with error code: " + std::to_string(wsaStartupResult));
+        return std::vector<std::string>();
     }
 
-    // Type cast hostname.size() to avoid data loss warning for 64-bit Windows machines.
-    // Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects the second argument to be an int(int namelen).  
-    if (gethostname(hostname.data(), static_cast<int>(hostname.size()) != 0)) {
+    /* Type cast hostname.size() to avoid data loss warning for 64 - bit Windows machines.
+       Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects
+       the second argument to be an int(int namelen).
+    */
+    if (gethostname(hostname.data(), static_cast<int>(hostname.size())) != 0) {
+        LogError("gethostname failed with error code: " + std::to_string(WSAGetLastError()));
         WSACleanup();
-        return ips;
+        return std::vector<std::string>();
     }
 
     addrinfo hints{};
@@ -163,14 +189,18 @@ std::vector<std::string> GetIPAddresses()
     hints.ai_socktype = SOCK_STREAM;
 
     addrinfo* info = nullptr;
-    if (getaddrinfo(hostname.data(), nullptr, &hints, &info) != 0) {
+    int getaddrinfoResult = getaddrinfo(hostname.data(), nullptr, &hints, &info);
+    if (getaddrinfoResult != 0) {
+        LogError("getaddrinfo failed with error code: " + std::to_string(getaddrinfoResult));
         WSACleanup();
-        return ips;
+        return std::vector<std::string>();
     }
 
     // Iterate network interfaces
     for (addrinfo* p = info; p != nullptr; p = p->ai_next)
     {
+        if (ipCount >= MAX_IPS) break;
+        
         char ipBuf[INET6_ADDRSTRLEN] = {};
 
         if (p->ai_family == AF_INET) {
@@ -195,13 +225,13 @@ std::vector<std::string> GetIPAddresses()
             continue; // skip unsupported families
         }
 
-        ips.emplace_back(ipBuf);
+        ipsArray[ipCount++] = ipBuf;
     }
 
     freeaddrinfo(info);
     WSACleanup();
 
-    return ips;
+    return std::vector<std::string>(ipsArray.begin(), ipsArray.begin() + ipCount);
 }
 
 
