@@ -158,19 +158,27 @@ std::wstring GetMachineName()
 
 std::vector<std::string> GetIPAddresses()
 {
-    int ipCount = 0;
     constexpr int HOSTNAME_LEN = 256;
-    constexpr int MAX_IPS = 16;
-    std::array<std::string, MAX_IPS> ipsArray = {};
+    constexpr int MAX_IPV4 = 5;
+    constexpr int MAX_IPV6 = 5;
+    int ipv4Count = 0;
+    int ipv6Count = 0;
+    constexpr int MAX_TOTAL_IPS = MAX_IPV4 + MAX_IPV6;
+    std::array<std::string, MAX_IPV4> ipv4Array = {};
+    std::array<std::string, MAX_IPV6> ipv6Array = {};
     std::array<char, HOSTNAME_LEN> hostname = {};
     const char* ipv4LoopbackAddr = "127.0.0.1";
     const char* ipv6LoopbackAddr = "::1";
     WORD wVersionRequired = MAKEWORD(2, 2);
     WSADATA wsa = {};  // Initialize WinSock
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;      // Resolve IPv4 + IPv6 address family
+    hints.ai_socktype = SOCK_STREAM;
+    std::array<std::string, MAX_TOTAL_IPS> resultArray = {};
         
     int wsaStartupResult = WSAStartup(wVersionRequired, &wsa);
     if (wsaStartupResult != 0) {
-        LogError("WSAStartup failed with error code: " + std::to_string(wsaStartupResult));
+        LogError("[-]Error: WSAStartup() failed with error code: " + std::to_string(wsaStartupResult));
         return std::vector<std::string>();
     }
 
@@ -179,31 +187,32 @@ std::vector<std::string> GetIPAddresses()
        the second argument to be an int(int namelen).
     */
     if (gethostname(hostname.data(), static_cast<int>(hostname.size())) != 0) {
-        LogError("gethostname failed with error code: " + std::to_string(WSAGetLastError()));
+        LogError("[-]Error: gethostname() failed with error code: " + std::to_string(WSAGetLastError()));
         WSACleanup();
         return std::vector<std::string>();
     }
 
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;      // Resolve IPv4 + IPv6 address family
-    hints.ai_socktype = SOCK_STREAM;
-
+    LogError("[+]Success: gethostname() completed successfully: " + std::to_string(WSAGetLastError()));
+    
     addrinfo* info = nullptr;
     int getaddrinfoResult = getaddrinfo(hostname.data(), nullptr, &hints, &info);
+
     if (getaddrinfoResult != 0) {
-        LogError("getaddrinfo failed with error code: " + std::to_string(getaddrinfoResult));
+        LogError("[-]Error: getaddrinfo() failed with error code: " + std::to_string(getaddrinfoResult));
         WSACleanup();
         return std::vector<std::string>();
     }
+
+	LogError("[+]Success: getaddrinfo() completed successfully." + std::to_string(getaddrinfoResult));
 
     // Iterate network interfaces
     for (addrinfo* p = info; p != nullptr; p = p->ai_next)
     {
-        if (ipCount >= MAX_IPS) break;
-        
         char ipBuf[INET6_ADDRSTRLEN] = {};
 
         if (p->ai_family == AF_INET) {
+            if (ipv4Count >= MAX_IPV4) continue;
+            
             sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
             if (!inet_ntop(AF_INET, &(ipv4->sin_addr), ipBuf, sizeof(ipBuf))) {
                 continue; // skip bad entries
@@ -211,8 +220,11 @@ std::vector<std::string> GetIPAddresses()
             if (strcmp(ipBuf, ipv4LoopbackAddr) == 0) {
                 continue; // skip IPv4 loopback
             }
+            ipv4Array[ipv4Count++] = ipBuf;
         }
         else if (p->ai_family == AF_INET6) {
+            if (ipv6Count >= MAX_IPV6) continue;
+            
             sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
             if (!inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipBuf, sizeof(ipBuf))) {
                 continue; // skip bad entries safely
@@ -220,20 +232,29 @@ std::vector<std::string> GetIPAddresses()
             if (strcmp(ipBuf, ipv6LoopbackAddr) == 0) {
                 continue; // skip IPv6 loopback
             }
+            ipv6Array[ipv6Count++] = ipBuf;
         }
         else {
             continue; // skip unsupported families
         }
-
-        ipsArray[ipCount++] = ipBuf;
     }
 
     freeaddrinfo(info);
     WSACleanup();
 
-    return std::vector<std::string>(ipsArray.begin(), ipsArray.begin() + ipCount);
-}
+    // Combine IPv4 and IPv6 addresses into result array (stack-allocated)
+    int totalCount = 0;
 
+    for (int i = 0; i < ipv4Count; ++i) {
+        resultArray[totalCount++] = ipv4Array[i];
+    }
+
+    for (int i = 0; i < ipv6Count; ++i) {
+        resultArray[totalCount++] = ipv6Array[i];
+    }
+
+    return std::vector<std::string>(resultArray.begin(), resultArray.begin() + totalCount);
+}
 
 std::string GenerateJSON()
 {
