@@ -23,10 +23,7 @@ namespace fs = std::filesystem;
 // Helper function for logging errors
 void LogError(const std::string& message)
 {
-    std::cerr << message << std::endl;
-    
-    // Also log to file for production use
-    fs::path logPath = fs::current_path() / "spectra_errors.log";
+    fs::path logPath = fs::current_path() / "spectra_log.txt";
     std::ofstream logFile(logPath, std::ios::app);
 
     if (logFile.is_open()) {
@@ -156,109 +153,137 @@ std::wstring GetMachineName()
     return L"";
 }
 
-std::vector<std::string> GetIPAddresses()
+// Helper: Extract IP string from addrinfo structure
+std::string ExtractIPFromAddrInfo(addrinfo* p)
 {
+    char ipBuf[INET6_ADDRSTRLEN] = {};
+
+    if (p->ai_family == AF_INET) {
+        sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
+        if (inet_ntop(AF_INET, &(ipv4->sin_addr), ipBuf, sizeof(ipBuf))) {
+            return ipBuf;
+        }
+    }
+    else if (p->ai_family == AF_INET6) {
+        sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
+        if (inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipBuf, sizeof(ipBuf))) {
+            return ipBuf;
+        }
+    }
+
+    return "";
+}
+
+// Helper: Check if IP is loopback
+bool IsLoopbackIP(const std::string& ip)
+{
+    return (ip == "127.0.0.1" || ip == "::1");
+}
+
+std::vector<std::string> GetAllIPAddresses()
+{
+    std::vector<std::string> svIPs;
+    svIPs.reserve(7);  // Single heap allocation: 5 IPv4 + 2 IPv6
     constexpr int HOSTNAME_LEN = 256;
     constexpr int MAX_IPV4 = 5;
-    constexpr int MAX_IPV6 = 5;
+    constexpr int MAX_IPV6 = 2;
     int ipv4Count = 0;
     int ipv6Count = 0;
-    constexpr int MAX_TOTAL_IPS = MAX_IPV4 + MAX_IPV6;
-    std::array<std::string, MAX_IPV4> ipv4Array = {};
-    std::array<std::string, MAX_IPV6> ipv6Array = {};
-    std::array<char, HOSTNAME_LEN> hostname = {};
-    const char* ipv4LoopbackAddr = "127.0.0.1";
-    const char* ipv6LoopbackAddr = "::1";
+    int getaddrinfoResult = 0;
+    std::string sIPAddr = "";
     WORD wVersionRequired = MAKEWORD(2, 2);
-    WSADATA wsa = {};  // Initialize WinSock
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;      // Resolve IPv4 + IPv6 address family
-    hints.ai_socktype = SOCK_STREAM;
-    std::array<std::string, MAX_TOTAL_IPS> resultArray = {};
-        
+    WSADATA wsa = {};
+    addrinfo* pAddrInfoList = nullptr;
+    std::array<char, HOSTNAME_LEN> cHostname = {};
+    addrinfo pHints = {};
+    pHints.ai_family = AF_UNSPEC;
+    pHints.ai_socktype = SOCK_STREAM;
     int wsaStartupResult = WSAStartup(wVersionRequired, &wsa);
+        
     if (wsaStartupResult != 0) {
         LogError("[-]Error: WSAStartup() failed with error code: " + std::to_string(wsaStartupResult));
-        return std::vector<std::string>();
+        return svIPs;
     }
 
-    /* Type cast hostname.size() to avoid data loss warning for 64 - bit Windows machines.
-       Because hostname.size() returns a size_t, which is 64-bit but gethostname() expects
-       the second argument to be an int(int namelen).
-    */
-    if (gethostname(hostname.data(), static_cast<int>(hostname.size())) != 0) {
+    LogError("[+]Trying to get local machine's hostname.");
+    if (gethostname(cHostname.data(), static_cast<int>(cHostname.size())) != 0) {
         LogError("[-]Error: gethostname() failed with error code: " + std::to_string(WSAGetLastError()));
+        LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
         WSACleanup();
-        return std::vector<std::string>();
+        
+        return svIPs;
     }
-
-    LogError("[+]Success: gethostname() completed successfully: " + std::to_string(WSAGetLastError()));
     
-    addrinfo* info = nullptr;
-    int getaddrinfoResult = getaddrinfo(hostname.data(), nullptr, &hints, &info);
+    LogError("[+]Trying to get all IP addresses.");
+    getaddrinfoResult = getaddrinfo(cHostname.data(), nullptr, &pHints, &pAddrInfoList);
 
     if (getaddrinfoResult != 0) {
         LogError("[-]Error: getaddrinfo() failed with error code: " + std::to_string(getaddrinfoResult));
+        
+        if (pAddrInfoList != nullptr) {
+            freeaddrinfo(pAddrInfoList);
+        }
+
+        LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
+        LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
         WSACleanup();
-        return std::vector<std::string>();
+
+        return svIPs;
     }
 
-	LogError("[+]Success: getaddrinfo() completed successfully." + std::to_string(getaddrinfoResult));
-
-    // Iterate network interfaces
-    for (addrinfo* p = info; p != nullptr; p = p->ai_next)
+    // Traverse linked list and collect non-loopback IPs with hard limits
+    for (addrinfo* p = pAddrInfoList; p != nullptr; p = p->ai_next)
     {
-        char ipBuf[INET6_ADDRSTRLEN] = {};
+        // Stop if we've reached the total limit
+        if (ipv4Count >= MAX_IPV4 && ipv6Count >= MAX_IPV6) {
+            LogError("[+]IP collection limit reached (5 IPv4 + 2 IPv6)");
+            break;
+        }
 
+        sIPAddr = ExtractIPFromAddrInfo(p);
+
+        if (sIPAddr.empty() || IsLoopbackIP(sIPAddr)) {
+            continue;
+        }
+
+        // Collect IPv4 addresses (max 5)
         if (p->ai_family == AF_INET) {
-            if (ipv4Count >= MAX_IPV4) continue;
-            
-            sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
-            if (!inet_ntop(AF_INET, &(ipv4->sin_addr), ipBuf, sizeof(ipBuf))) {
-                continue; // skip bad entries
+            if (ipv4Count < MAX_IPV4) {
+                svIPs.push_back(sIPAddr);
+                ipv4Count++;
+                LogError("[+]IPv4 address collected: " + sIPAddr);
             }
-            if (strcmp(ipBuf, ipv4LoopbackAddr) == 0) {
-                continue; // skip IPv4 loopback
-            }
-            ipv4Array[ipv4Count++] = ipBuf;
         }
+        // Collect IPv6 addresses (max 2)
         else if (p->ai_family == AF_INET6) {
-            if (ipv6Count >= MAX_IPV6) continue;
-            
-            sockaddr_in6* ipv6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
-            if (!inet_ntop(AF_INET6, &(ipv6->sin6_addr), ipBuf, sizeof(ipBuf))) {
-                continue; // skip bad entries safely
+            if (ipv6Count < MAX_IPV6) {
+                svIPs.push_back(sIPAddr);
+                ipv6Count++;
+                LogError("[+]IPv6 address collected: " + sIPAddr);
             }
-            if (strcmp(ipBuf, ipv6LoopbackAddr) == 0) {
-                continue; // skip IPv6 loopback
-            }
-            ipv6Array[ipv6Count++] = ipBuf;
-        }
-        else {
-            continue; // skip unsupported families
         }
     }
 
-    freeaddrinfo(info);
+    // Clean up resources
+    if (pAddrInfoList != nullptr) {
+        LogError("[+]Calling freeaddrinfo() to free the address information that has been allocated to addrinfo structure.");
+        freeaddrinfo(pAddrInfoList);
+    }
+
+    LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
     WSACleanup();
 
-    // Combine IPv4 and IPv6 addresses into result array (stack-allocated)
-    int totalCount = 0;
-
-    for (int i = 0; i < ipv4Count; ++i) {
-        resultArray[totalCount++] = ipv4Array[i];
-    }
-
-    for (int i = 0; i < ipv6Count; ++i) {
-        resultArray[totalCount++] = ipv6Array[i];
-    }
-
-    return std::vector<std::string>(resultArray.begin(), resultArray.begin() + totalCount);
+    LogError("[+]Total IP addresses collected: " + std::to_string(svIPs.size()) + 
+             " (IPv4: " + std::to_string(ipv4Count) + ", IPv6: " + std::to_string(ipv6Count) + ")");
+    return svIPs;
 }
 
 std::string GenerateJSON()
 {
     std::map<std::wstring, std::vector<InstalledApp>> userApps;
+    std::vector<InstalledApp> systemApps = {};
+    std::wstring machineName = L"";
+	std::vector<std::string> svipAddresses = {};
 
     // Get system wide installed applications from x64 and WOW6432 registry keys
     auto sys64 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
@@ -266,7 +291,7 @@ std::string GenerateJSON()
     auto sys32 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
 
-    std::vector<InstalledApp> systemApps = sys64;
+    systemApps = sys64;
     systemApps.insert(systemApps.end(), sys32.begin(), sys32.end());
     userApps[L"SYSTEM"] = systemApps;
 
@@ -286,19 +311,21 @@ std::string GenerateJSON()
             userApps[username] = apps;
     }
 
-        std::wstring machineName = GetMachineName();
-    auto ips = GetIPAddresses();
+    machineName = GetMachineName();
+    svipAddresses = GetAllIPAddresses();
 
     // JSON Begin
     std::ostringstream out;
     out << "{\n";
     out << "  \"machineName\": " << JsonEscape(machineName) << ",\n";
     out << "  \"ipAddresses\": [\n";
-    for (size_t i = 0; i < ips.size(); i++) {
-        out << "    \"" << ips[i] << "\"";
-        if (i + 1 < ips.size()) out << ",";
+    
+    for (size_t i = 0; i < svipAddresses.size(); i++) {
+        out << "    \"" << svipAddresses[i] << "\"";
+        if (i + 1 < svipAddresses.size()) out << ",";
         out << "\n";
     }
+    
     out << "  ],\n";
     out << "  \"installedAppsByUser\": [\n";
 
