@@ -34,7 +34,7 @@ struct InstalledApp {
 };
 
 // Network functions
-std::vector<std::string> GetAllIPAddresses();
+std::vector<std::string> GetLocalIPAddresses();
 MachineNames GetMachineName();
 
 // Registry functions

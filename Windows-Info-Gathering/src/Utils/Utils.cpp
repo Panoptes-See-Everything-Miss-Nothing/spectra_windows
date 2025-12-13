@@ -3,6 +3,12 @@
 // Static mutex for thread-safe logging
 static std::mutex g_logMutex;
 
+// Helper: Check if IP is loopback
+bool IsLoopbackIP(const std::string& ip)
+{
+    return (ip == "127.0.0.1" || ip == "::1");
+}
+
 void LogError(const std::string& message)
 {
     struct tm timeinfo;

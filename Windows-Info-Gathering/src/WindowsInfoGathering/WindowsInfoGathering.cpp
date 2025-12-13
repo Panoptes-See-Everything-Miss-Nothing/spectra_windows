@@ -50,6 +50,10 @@ MachineNames GetMachineName()
 // Helper: Extract IP string from addrinfo structure
 std::string ExtractIPFromAddrInfo(addrinfo* p)
 {
+    if (!p || !p->ai_addr) {
+        return {};
+    }
+
     char ipBuf[INET6_ADDRSTRLEN] = {};
 
     if (p->ai_family == AF_INET) {
@@ -133,7 +137,7 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
     return apps;
 }
 
-std::vector<std::string> GetAllIPAddresses()
+std::vector<std::string> GetLocalIPAddresses()
 {
     std::array<std::string, 7> ipArray;  // Stack allocation: 5 IPv4 + 2 IPv6
     constexpr int HOSTNAME_LEN = 256;

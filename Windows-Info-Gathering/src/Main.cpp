@@ -38,7 +38,7 @@ std::string GenerateJSON()
             userApps[username] = apps;
     }
 
-    svipAddresses = GetAllIPAddresses();
+    svipAddresses = GetLocalIPAddresses();
 
     // JSON Begin
     std::ostringstream out;
