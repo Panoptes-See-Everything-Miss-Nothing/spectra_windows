@@ -4,10 +4,13 @@
 #include <map>
 
 #pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "advapi32.lib")  // For registry and privilege APIs (lowercase)
 
 std::string GenerateJSON()
 {
     std::map<std::wstring, std::vector<InstalledApp>> userApps;
+    std::map<std::wstring, std::wstring> userSIDs;  // Map username -> SID
+    std::map<std::wstring, std::vector<AppXPackage>> userAppXPackages;  // Map username -> AppX packages
     std::vector<InstalledApp> systemApps = {};
     MachineNames machineNames = GetMachineName();
     std::vector<std::string> svipAddresses = {};
@@ -22,21 +25,33 @@ std::string GenerateJSON()
     systemApps = sys64;
     systemApps.insert(systemApps.end(), sys32.begin(), sys32.end());
     userApps[L"SYSTEM"] = systemApps;
+    userSIDs[L"SYSTEM"] = L"S-1-5-18";  // Well-known SID for SYSTEM
 
-    // Get a list of applications installed for a particular user.
-    for (auto& entry : fs::directory_iterator(L"C:\\Users"))
-    {
-        if (!entry.is_directory()) continue;
+    // Enumerate all user profiles and collect their apps
+    std::vector<UserProfile> profiles = EnumerateUserProfiles();
+    
+    for (const auto& profile : profiles) {
+        // Get Win32 apps for this user (don't shadow the outer map!)
+        std::vector<InstalledApp> profileApps = GetUserInstalledApps(profile);
+        
+        // Get AppX packages for this user
+        std::vector<AppXPackage> profilePackages = GetUserAppXPackages(profile.sid);
+        
+        // Add to maps if we found any apps
+        if (!profileApps.empty()) {
+            userApps[profile.username] = profileApps;
+            userSIDs[profile.username] = profile.sid;
+        }
+        
+        if (!profilePackages.empty()) {
+            userAppXPackages[profile.username] = profilePackages;
+        }
+    }
 
-        std::wstring username = entry.path().filename().wstring();
-        if (username == L"Public" || username == L"Default" || username == L"All Users")
-            continue;
-
-        auto apps = GetAppsFromUninstallKey(HKEY_CURRENT_USER,
-            L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-
-        if (!apps.empty())
-            userApps[username] = apps;
+    // Get system-wide AppX packages
+    std::vector<AppXPackage> systemPackages = EnumerateAppXPackages();
+    if (!systemPackages.empty()) {
+        userAppXPackages[L"SYSTEM"] = systemPackages;
     }
 
     svipAddresses = GetLocalIPAddresses();
@@ -63,9 +78,12 @@ std::string GenerateJSON()
         if (!firstUser) out << ",\n";
         firstUser = false;
 
+        const std::wstring& username = pair.first;
+        const std::wstring& userSID = userSIDs[username];
+
         out << "    {\n";
-        out << "      \"user\": " << JsonEscape(pair.first) << ",\n";
-        out << "      \"userSID\": " << JsonEscape(pair.first) << ",\n"; // Placeholder
+        out << "      \"user\": " << JsonEscape(username) << ",\n";
+        out << "      \"userSID\": " << JsonEscape(userSID) << ",\n";
         out << "      \"applications\": [\n";
 
         const auto& apps = pair.second;
@@ -87,7 +105,35 @@ std::string GenerateJSON()
             out << "\n";
         }
 
-        out << "      ]\n";
+        out << "      ]";
+        
+        // Add AppX packages if available for this user
+        if (userAppXPackages.find(username) != userAppXPackages.end()) {
+            out << ",\n";
+            out << "      \"appxPackages\": [\n";
+            
+            const auto& packages = userAppXPackages[username];
+            for (size_t i = 0; i < packages.size(); i++)
+            {
+                out << "        {\n";
+                out << "          \"packageFullName\": " << JsonEscape(packages[i].packageFullName) << ",\n";
+                out << "          \"packageFamilyName\": " << JsonEscape(packages[i].packageFamilyName) << ",\n";
+                out << "          \"displayName\": " << JsonEscape(packages[i].displayName) << ",\n";
+                out << "          \"publisher\": " << JsonEscape(packages[i].publisher) << ",\n";
+                out << "          \"version\": " << JsonEscape(packages[i].version) << ",\n";
+                out << "          \"architecture\": " << JsonEscape(packages[i].architecture) << ",\n";
+                out << "          \"installLocation\": " << JsonEscape(packages[i].installLocation) << ",\n";
+                out << "          \"isFramework\": " << (packages[i].isFramework ? "true" : "false") << "\n";
+                out << "        }";
+                if (i + 1 < packages.size()) out << ",";
+                out << "\n";
+            }
+            
+            out << "      ]\n";
+        } else {
+            out << "\n";
+        }
+
         out << "    }";
     }
 
@@ -137,7 +183,14 @@ int main()
     }
 #endif
 
+    LogError("[!] IMPORTANT: This application must run as SYSTEM account to enumerate all user profiles.");
+    LogError("[!] Running as Administrator is NOT sufficient.");
+    LogError("[!] Use PsExec or Task Scheduler to run as SYSTEM:");
+    LogError("[!]   psexec -s -i Windows-Info-Gathering.exe");
+    LogError("[!]   OR create a scheduled task with 'Run whether user is logged on or not' + 'Run with highest privileges'");
+    
     std::string jsonData = GenerateJSON();
     WriteJSONToFile(jsonData); 
     return 0;
 }
+

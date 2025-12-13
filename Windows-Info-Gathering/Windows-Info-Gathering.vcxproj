@@ -167,6 +167,9 @@
     <ClInclude Include="src\Utils\Utils.h" />
     <ClInclude Include="src\WindowsInfoGathering\WindowsInfoGathering.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="README_RUN_AS_SYSTEM.md" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

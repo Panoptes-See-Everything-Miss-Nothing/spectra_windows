@@ -33,4 +33,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="README_RUN_AS_SYSTEM.md" />
+  </ItemGroup>
 </Project>
