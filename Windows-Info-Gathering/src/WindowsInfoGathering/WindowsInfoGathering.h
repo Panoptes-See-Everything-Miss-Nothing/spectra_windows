@@ -1,15 +1,15 @@
 #pragma once
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
+// Minimize Windows API surface area
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <winsock2.h>    // Must be before windows.h
+#include <ws2tcpip.h>    // For addrinfo, inet_ntop
+#include <windows.h>     // For HKEY and basic Windows types
 #include <string>
 #include <vector>
-#include <array>
-
-// Network functions
-std::vector<std::string> GetAllIPAddresses();
-std::wstring GetMachineName();
 
 // Installed app structure
 struct InstalledApp {
@@ -25,6 +25,10 @@ struct InstalledApp {
     std::wstring uninstallString;
 };
 
+// Network functions
+std::vector<std::string> GetAllIPAddresses();
+std::wstring GetMachineName();
+
 // Registry functions
 std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName);
 std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring& subkey);
@@ -32,6 +36,8 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
 // Helper functions
 bool IsLoopbackIP(const std::string& ip);
 std::string ExtractIPFromAddrInfo(addrinfo* p);
+
+
 
 
 
