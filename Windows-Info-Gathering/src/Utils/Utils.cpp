@@ -1,7 +1,5 @@
 #include "Utils.h"
 
-namespace fs = std::filesystem;
-
 // Static mutex for thread-safe logging
 static std::mutex g_logMutex;
 
