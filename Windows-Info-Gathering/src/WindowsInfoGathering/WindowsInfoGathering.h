@@ -10,6 +10,14 @@
 #include <windows.h>     // For HKEY and basic Windows types
 #include <string>
 #include <vector>
+#include <array>
+#include "../Utils/Utils.h"
+
+// Machine name structure
+struct MachineNames {
+    std::wstring netbiosName;  // NetBIOS name (short name, e.g., "DESKTOP-ABC123")
+    std::wstring dnsName;      // DNS/FQDN name (e.g., "desktop-abc123.example.com")
+};
 
 // Installed app structure
 struct InstalledApp {
@@ -27,7 +35,7 @@ struct InstalledApp {
 
 // Network functions
 std::vector<std::string> GetAllIPAddresses();
-std::wstring GetMachineName();
+MachineNames GetMachineName();
 
 // Registry functions
 std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName);
@@ -36,6 +44,7 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
 // Helper functions
 bool IsLoopbackIP(const std::string& ip);
 std::string ExtractIPFromAddrInfo(addrinfo* p);
+
 
 
 

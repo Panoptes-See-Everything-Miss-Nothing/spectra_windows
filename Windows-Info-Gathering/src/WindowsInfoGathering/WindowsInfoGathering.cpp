@@ -1,5 +1,5 @@
 #include "WindowsInfoGathering.h"
-#include "../Utils/Utils.h"
+
 
 // Helper: Check if IP is loopback
 bool IsLoopbackIP(const std::string& ip)
@@ -7,13 +7,48 @@ bool IsLoopbackIP(const std::string& ip)
     return (ip == "127.0.0.1" || ip == "::1");
 }
 
-std::wstring GetMachineName()
+MachineNames GetMachineName()
 {
-    WCHAR buf[256];
-    DWORD size = 256;
-    if (GetComputerNameW(buf, &size))
-        return buf;
-    return L"";
+    MachineNames machineNames;
+    DWORD dwError = {};
+    int sizeNeeded = 0;
+    WCHAR netbiosBuffer[MAX_COMPUTERNAME_LENGTH + 1] = {};
+    DWORD netbiosSize = MAX_COMPUTERNAME_LENGTH + 1;  // Size INCLUDING null terminator
+    constexpr DWORD DNS_BUFFER_SIZE = 256;  // DNS_MAX_NAME_BUFFER_LENGTH included null terminator already
+    WCHAR dnsBuffer[DNS_BUFFER_SIZE] = {};
+    DWORD dnsSize = DNS_BUFFER_SIZE;  //  Match buffer size exactly
+    
+    if (GetComputerNameW(netbiosBuffer, &netbiosSize)) {
+        machineNames.netbiosName = netbiosBuffer;
+        LogWideStringAsUtf8("[+] Retrieved NetBIOS name: ", machineNames.netbiosName);
+    } else {
+        dwError = GetLastError();
+        if (dwError == ERROR_BUFFER_OVERFLOW) {
+            // Buffer too small - netbiosSize now contains required size
+            LogError("[-] NetBIOS name buffer too small, required size: " + std::to_string(netbiosSize));
+        } else {
+            LogError("[-] Failed to retrieve NetBIOS name, error: " + std::to_string(dwError));
+        }
+    }
+
+    if (GetComputerNameExW(ComputerNameDnsFullyQualified, dnsBuffer, &dnsSize)) {
+        machineNames.dnsName = dnsBuffer;
+        LogWideStringAsUtf8("[+] Retrieved DNS/FQDN name: ", machineNames.dnsName);
+    } else {
+        dwError = GetLastError();
+
+        if (dwError == ERROR_MORE_DATA) {
+            // Buffer too small - dnsSize now contains required size INCLUDING null terminator
+            LogError("[-] DNS name buffer too small, required size: " + std::to_string(dnsSize));
+        } else {
+            LogError("[-] Failed to retrieve DNS/FQDN name (error: " + std::to_string(dwError) + "), using NetBIOS name as fallback");
+        }
+
+		LogError("[+] Fallback: Setting DNS/FQDN name to NetBIOS name.");
+        machineNames.dnsName = machineNames.netbiosName;
+    }
+    
+    return machineNames;
 }
 
 // Helper: Extract IP string from addrinfo structure

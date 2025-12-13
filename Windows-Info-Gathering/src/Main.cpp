@@ -27,8 +27,8 @@ std::string GenerateJSON()
 {
     std::map<std::wstring, std::vector<InstalledApp>> userApps;
     std::vector<InstalledApp> systemApps = {};
-    std::wstring machineName = L"";
-	std::vector<std::string> svipAddresses = {};
+    MachineNames machineNames = GetMachineName();
+    std::vector<std::string> svipAddresses = {};
 
     // Get system wide installed applications from x64 and WOW6432 registry keys
     auto sys64 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
@@ -56,13 +56,13 @@ std::string GenerateJSON()
             userApps[username] = apps;
     }
 
-    machineName = GetMachineName();
     svipAddresses = GetAllIPAddresses();
 
     // JSON Begin
     std::ostringstream out;
     out << "{\n";
-    out << "  \"machineName\": " << JsonEscape(machineName) << ",\n";
+    out << "  \"machineNetBiosName\": " << JsonEscape(machineNames.netbiosName) << ",\n";
+    out << "  \"machineDnsName\": " << JsonEscape(machineNames.dnsName) << ",\n";
     out << "  \"ipAddresses\": [\n";
     
     for (size_t i = 0; i < svipAddresses.size(); i++) {
