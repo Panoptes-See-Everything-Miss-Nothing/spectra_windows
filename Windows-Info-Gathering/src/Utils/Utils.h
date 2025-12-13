@@ -23,3 +23,9 @@ void WriteJSONToFile(const std::string& jsonData, const std::wstring& filename =
 // Helper function for logging errors
 // Thread-safe logging to "spectra_log.txt" in the current directory
 void LogError(const std::string& message);
+
+// Helper: Check if IP is loopback
+bool IsLoopbackIP(const std::string& ip)
+{
+    return (ip == "127.0.0.1" || ip == "::1");
+}

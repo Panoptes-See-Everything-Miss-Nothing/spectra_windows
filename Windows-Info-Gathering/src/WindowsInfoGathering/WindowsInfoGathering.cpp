@@ -1,12 +1,5 @@
 #include "WindowsInfoGathering.h"
 
-
-// Helper: Check if IP is loopback
-bool IsLoopbackIP(const std::string& ip)
-{
-    return (ip == "127.0.0.1" || ip == "::1");
-}
-
 MachineNames GetMachineName()
 {
     MachineNames machineNames;
