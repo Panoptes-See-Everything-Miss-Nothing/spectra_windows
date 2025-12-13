@@ -7,6 +7,9 @@
 #include <chrono>
 #include <iomanip>
 #include <mutex>
+
+// Logs a wide (UTF-16) string as UTF-8 with a text prefix
+void LogWideStringAsUtf8(const std::string& prefix, const std::wstring& value);
 #include <windows.h>
 #include <sstream>
 

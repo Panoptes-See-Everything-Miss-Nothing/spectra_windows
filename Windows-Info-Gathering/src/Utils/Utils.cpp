@@ -40,6 +40,29 @@ void LogError(const std::string& message)
     }
 }
 
+void LogWideStringAsUtf8(const std::string& prefix, const std::wstring& value)
+{
+    // Convert wstring to UTF-8 for logging
+    if (value.empty()) {
+        LogError(prefix + "<empty>");
+        return;
+    }
+
+    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (sizeNeeded <= 0) {
+        LogError(prefix + "<conversion failed>");
+        return;
+    }
+
+    std::string utf8(static_cast<size_t>(sizeNeeded - 1), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, utf8.data(), sizeNeeded, nullptr, nullptr) <= 0) {
+        LogError(prefix + "<conversion failed>");
+        return;
+    }
+
+    LogError(prefix + utf8);
+}
+
 // UTF-8 JSON ESCAPE
 std::string JsonEscape(const std::wstring& input)
 {
