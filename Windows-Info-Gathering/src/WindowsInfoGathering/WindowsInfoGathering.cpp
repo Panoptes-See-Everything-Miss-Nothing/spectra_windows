@@ -1,4 +1,4 @@
-#include "WindowsInfoGathering.h"
+﻿#include "WindowsInfoGathering.h"
 
 MachineNames GetMachineName()
 {
@@ -50,12 +50,12 @@ MachineNames GetMachineName()
 // Helper: Extract IP string from addrinfo structure
 std::string ExtractIPFromAddrInfo(addrinfo* p)
 {
+    char ipBuf[INET6_ADDRSTRLEN] = {};
+
     if (!p || !p->ai_addr) {
         return {};
     }
-
-    char ipBuf[INET6_ADDRSTRLEN] = {};
-
+        
     if (p->ai_family == AF_INET) {
         sockaddr_in* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
         if (inet_ntop(AF_INET, &(ipv4->sin_addr), ipBuf, sizeof(ipBuf))) {
@@ -75,20 +75,48 @@ std::string ExtractIPFromAddrInfo(addrinfo* p)
 // Read REG_SZ safely
 std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
 {
+    if (!hKey) {
+        return L"";
+    }
+
     DWORD type = 0;
     DWORD size = 0;
+    DWORD actualSize = 0;
+    size_t charCount = 0;
 
+    // First call: get size and type
     if (RegQueryValueExW(hKey, valueName.c_str(), nullptr, &type, nullptr, &size) != ERROR_SUCCESS)
         return L"";
 
+    // Validate type
     if (type != REG_SZ && type != REG_EXPAND_SZ)
         return L"";
 
-    std::wstring data(size / sizeof(wchar_t), L'\0');
-
-    if (RegQueryValueExW(hKey, valueName.c_str(), nullptr, nullptr, (LPBYTE)data.data(), &size) != ERROR_SUCCESS)
+    // Validate size alignment
+    if (size % sizeof(wchar_t) != 0) {
+        LogError("[-] Registry value has invalid size (not wchar_t aligned): " + std::to_string(size));
         return L"";
+    }
 
+    // Allocate buffer for Windows API to write into.
+    // Since, UTF-16 takes two bytes per char, convert byte size to wchar_t (UTF-16) count for buffer allocation
+    charCount = size / sizeof(wchar_t); 
+    std::wstring data(charCount, L'\0');
+
+    // Second call: get data
+    actualSize = size;
+    if (RegQueryValueExW(hKey, valueName.c_str(), nullptr, nullptr, (LPBYTE)data.data(), &actualSize) != ERROR_SUCCESS)
+    {
+        return L"";
+    }
+
+    // Validate actual size matches expected
+    if (actualSize != size) {
+        LogError("[-] Registry value size changed between calls");
+        return L"";
+    }
+
+    // Remove null terminator if present
     if (!data.empty() && data.back() == L'\0')
         data.pop_back();
 
@@ -98,16 +126,18 @@ std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
 std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring& subkey)
 {
     std::vector<InstalledApp> apps;
-
     HKEY hKey;
+    DWORD index = 0;
+    constexpr DWORD MAX_KEY_LENGTH = 256;  // 255 chars + null terminator
+    WCHAR name[MAX_KEY_LENGTH];
+    DWORD nameSize = MAX_KEY_LENGTH;
+    LONG result;
+
     if (RegOpenKeyExW(root, subkey.c_str(), 0, KEY_READ, &hKey) != ERROR_SUCCESS)
         return apps;
 
-    DWORD index = 0;
-    WCHAR name[256];
-    DWORD nameSize = 256;
-
-    while (RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+    while ((result = RegEnumKeyExW(hKey, index, name, &nameSize, 
+                                   nullptr, nullptr, nullptr, nullptr)) == ERROR_SUCCESS)
     {
         HKEY hSub;
         if (RegOpenKeyExW(hKey, name, 0, KEY_READ, &hSub) == ERROR_SUCCESS)
@@ -129,8 +159,14 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
 
             RegCloseKey(hSub);
         }
+        
         index++;
-        nameSize = 256;
+        nameSize = MAX_KEY_LENGTH;  // IMP: Reset size before next iteration
+    }
+
+    // Check if enumeration ended normally or due to error
+    if (result != ERROR_NO_MORE_ITEMS) {
+        LogError("[-] Registry enumeration ended with error: " + std::to_string(result));
     }
 
     RegCloseKey(hKey);
