@@ -1,27 +1,9 @@
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <sddl.h>
-#include <shlobj.h>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <map>
-#include <filesystem>
-#include <sstream>
-#include <fstream>
-#include <array>
-#include <cstring>
-#include <chrono>
-#include <iomanip>
 #include "WindowsInfoGathering/WindowsInfoGathering.h"
 #include "Utils/Utils.h"
+#include <map>
 
 #pragma comment(lib, "Ws2_32.lib")
-
-namespace fs = std::filesystem;
-
 
 std::string GenerateJSON()
 {

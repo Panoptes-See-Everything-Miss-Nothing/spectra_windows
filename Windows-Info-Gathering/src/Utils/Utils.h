@@ -7,11 +7,13 @@
 #include <chrono>
 #include <iomanip>
 #include <mutex>
+#include <windows.h>
+#include <sstream>
+
+namespace fs = std::filesystem;
 
 // Logs a wide (UTF-16) string as UTF-8 with a text prefix
 void LogWideStringAsUtf8(const std::string& prefix, const std::wstring& value);
-#include <windows.h>
-#include <sstream>
 
 // UTF-8 JSON ESCAPE
 std::string JsonEscape(const std::wstring& input);

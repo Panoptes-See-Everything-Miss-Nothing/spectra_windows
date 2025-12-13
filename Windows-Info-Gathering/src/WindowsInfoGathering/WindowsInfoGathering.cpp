@@ -21,12 +21,14 @@ MachineNames GetMachineName()
     if (GetComputerNameW(netbiosBuffer, &netbiosSize)) {
         machineNames.netbiosName = netbiosBuffer;
         LogWideStringAsUtf8("[+] Retrieved NetBIOS name: ", machineNames.netbiosName);
-    } else {
+    }
+    else {
         dwError = GetLastError();
         if (dwError == ERROR_BUFFER_OVERFLOW) {
             // Buffer too small - netbiosSize now contains required size
             LogError("[-] NetBIOS name buffer too small, required size: " + std::to_string(netbiosSize));
-        } else {
+        }
+        else {
             LogError("[-] Failed to retrieve NetBIOS name, error: " + std::to_string(dwError));
         }
     }
@@ -34,13 +36,14 @@ MachineNames GetMachineName()
     if (GetComputerNameExW(ComputerNameDnsFullyQualified, dnsBuffer, &dnsSize)) {
         machineNames.dnsName = dnsBuffer;
         LogWideStringAsUtf8("[+] Retrieved DNS/FQDN name: ", machineNames.dnsName);
-    } else {
+    }
+    else {
         dwError = GetLastError();
 
         if (dwError == ERROR_MORE_DATA) {
-            // Buffer too small - dnsSize now contains required size INCLUDING null terminator
             LogError("[-] DNS name buffer too small, required size: " + std::to_string(dnsSize));
-        } else {
+        }
+        else {
             LogError("[-] Failed to retrieve DNS/FQDN name (error: " + std::to_string(dwError) + "), using NetBIOS name as fallback");
         }
 
