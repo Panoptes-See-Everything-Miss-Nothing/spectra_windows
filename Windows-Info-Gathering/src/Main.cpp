@@ -182,13 +182,13 @@ bool IsLoopbackIP(const std::string& ip)
 
 std::vector<std::string> GetAllIPAddresses()
 {
-    std::vector<std::string> svIPs;
-    svIPs.reserve(7);  // Single heap allocation: 5 IPv4 + 2 IPv6
+    std::array<std::string, 7> ipArray;  // Stack allocation: 5 IPv4 + 2 IPv6
     constexpr int HOSTNAME_LEN = 256;
     constexpr int MAX_IPV4 = 5;
     constexpr int MAX_IPV6 = 2;
     int ipv4Count = 0;
     int ipv6Count = 0;
+    int totalCount = 0;
     int getaddrinfoResult = 0;
     std::string sIPAddr = "";
     WORD wVersionRequired = MAKEWORD(2, 2);
@@ -202,7 +202,7 @@ std::vector<std::string> GetAllIPAddresses()
         
     if (wsaStartupResult != 0) {
         LogError("[-]Error: WSAStartup() failed with error code: " + std::to_string(wsaStartupResult));
-        return svIPs;
+        return std::vector<std::string>();
     }
 
     LogError("[+]Trying to get local machine's hostname.");
@@ -211,7 +211,7 @@ std::vector<std::string> GetAllIPAddresses()
         LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
         WSACleanup();
         
-        return svIPs;
+        return std::vector<std::string>();
     }
     
     LogError("[+]Trying to get all IP addresses.");
@@ -225,10 +225,9 @@ std::vector<std::string> GetAllIPAddresses()
         }
 
         LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
-        LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
         WSACleanup();
 
-        return svIPs;
+        return std::vector<std::string>();
     }
 
     // Traverse linked list and collect non-loopback IPs with hard limits
@@ -249,7 +248,7 @@ std::vector<std::string> GetAllIPAddresses()
         // Collect IPv4 addresses (max 5)
         if (p->ai_family == AF_INET) {
             if (ipv4Count < MAX_IPV4) {
-                svIPs.push_back(sIPAddr);
+                ipArray[totalCount++] = sIPAddr;
                 ipv4Count++;
                 LogError("[+]IPv4 address collected: " + sIPAddr);
             }
@@ -257,7 +256,7 @@ std::vector<std::string> GetAllIPAddresses()
         // Collect IPv6 addresses (max 2)
         else if (p->ai_family == AF_INET6) {
             if (ipv6Count < MAX_IPV6) {
-                svIPs.push_back(sIPAddr);
+                ipArray[totalCount++] = sIPAddr;
                 ipv6Count++;
                 LogError("[+]IPv6 address collected: " + sIPAddr);
             }
@@ -273,9 +272,10 @@ std::vector<std::string> GetAllIPAddresses()
     LogError("[+]Calling WSACleanup() to terminate the use of WinSock2 DLL.");
     WSACleanup();
 
-    LogError("[+]Total IP addresses collected: " + std::to_string(svIPs.size()) + 
+    LogError("[+]Total IP addresses collected: " + std::to_string(totalCount) + 
              " (IPv4: " + std::to_string(ipv4Count) + ", IPv6: " + std::to_string(ipv6Count) + ")");
-    return svIPs;
+    
+    return std::vector<std::string>(ipArray.begin(), ipArray.begin() + totalCount);
 }
 
 std::string GenerateJSON()
