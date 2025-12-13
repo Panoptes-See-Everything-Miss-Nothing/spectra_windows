@@ -13,6 +13,7 @@ std::string GenerateJSON()
     std::vector<std::string> svipAddresses = {};
 
     // Get system wide installed applications from x64 and WOW6432 registry keys
+    // Note: 32-bit build is blocked from running on 64-bit Windows at startup
     auto sys64 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
     auto sys32 = GetAppsFromUninstallKey(HKEY_LOCAL_MACHINE,
@@ -96,8 +97,46 @@ std::string GenerateJSON()
     return out.str();
 }
 
+// Helper: Check if running 32-bit app on 64-bit Windows
+bool IsWow64Process()
+{
+#ifdef _WIN64
+    // 64-bit build always returns false (can't be WOW64)
+    return false;
+#else
+    // 32-bit build: check if running under WOW64
+    typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS)(HANDLE, PBOOL);
+    LPFN_ISWOW64PROCESS fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+        GetModuleHandleW(L"kernel32"), "IsWow64Process");
+    
+    if (fnIsWow64Process != nullptr)
+    {
+        BOOL isWow64 = FALSE;
+        if (fnIsWow64Process(GetCurrentProcess(), &isWow64))
+        {
+            return isWow64 == TRUE;
+        }
+    }
+    return false;
+#endif
+}
+
 int main()
 {
+#ifndef _WIN64
+    // 32-bit build: Block execution on 64-bit Windows
+    if (IsWow64Process())
+    {
+        MessageBoxW(nullptr,
+            L"This 32-bit application is not supported on 64-bit Windows.\n\n"
+            L"Please use the 64-bit version of this application.",
+            L"Architecture Mismatch",
+            MB_OK | MB_ICONERROR);
+        LogError("[-] FATAL: 32-bit application attempted to run on 64-bit Windows. Exiting.");
+        return 1;  // Exit with error code
+    }
+#endif
+
     std::string jsonData = GenerateJSON();
     WriteJSONToFile(jsonData); 
     return 0;
