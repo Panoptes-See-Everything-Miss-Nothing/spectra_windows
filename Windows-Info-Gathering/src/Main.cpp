@@ -1,7 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "WindowsInfoGathering/WindowsInfoGathering.h"
 #include "Utils/Utils.h"
-#include <map>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")  // For registry and privilege APIs (lowercase)

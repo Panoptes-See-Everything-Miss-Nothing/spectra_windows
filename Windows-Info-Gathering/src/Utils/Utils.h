@@ -7,8 +7,11 @@
 #include <chrono>
 #include <iomanip>
 #include <mutex>
-#include <windows.h>
+#include <windows.h>     // For HKEY and basic Windows types
 #include <sstream>
+#include <vector>
+#include <array>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -26,3 +29,6 @@ void LogError(const std::string& message);
 
 // Helper: Check if IP is loopback (defined in WindowsInfoGathering.cpp)
 bool IsLoopbackIP(const std::string& ip);
+
+// Helper: Convert wstring to UTF-8 string safely
+std::string WideToUtf8(const std::wstring& wstr);

@@ -7,10 +7,6 @@
 
 #include <winsock2.h>    // Must be before windows.h
 #include <ws2tcpip.h>    // For addrinfo, inet_ntop
-#include <windows.h>     // For HKEY and basic Windows types
-#include <string>
-#include <vector>
-#include <array>
 #include "../Utils/Utils.h"
 
 // Link required libraries

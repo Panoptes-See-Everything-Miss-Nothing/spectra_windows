@@ -111,3 +111,18 @@ void WriteJSONToFile(const std::string& jsonData, const std::wstring& filename)
     }
 }
 
+// Helper: Convert wstring to UTF-8 string safely
+std::string WideToUtf8(const std::wstring& wstr)
+{
+    if (wstr.empty()) return {};
+
+    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (sizeNeeded <= 0) return {};
+
+    std::string utf8(static_cast<size_t>(sizeNeeded - 1), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, utf8.data(), sizeNeeded, nullptr, nullptr) <= 0) {
+        return {};
+    }
+
+    return utf8;
+}
