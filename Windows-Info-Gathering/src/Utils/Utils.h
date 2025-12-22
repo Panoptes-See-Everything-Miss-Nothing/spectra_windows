@@ -32,3 +32,6 @@ bool IsLoopbackIP(const std::string& ip);
 
 // Helper: Convert wstring to UTF-8 string safely
 std::string WideToUtf8(const std::wstring& wstr);
+
+// Helper: Check if username is a system account
+bool IsSystemAccount(const std::wstring& username);

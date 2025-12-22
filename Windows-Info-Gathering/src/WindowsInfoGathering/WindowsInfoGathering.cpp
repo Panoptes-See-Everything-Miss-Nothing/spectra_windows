@@ -88,11 +88,9 @@ std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
     if (RegQueryValueExW(hKey, valueName.c_str(), nullptr, &type, nullptr, &size) != ERROR_SUCCESS)
         return L"";
 
-    // Validate type
     if (type != REG_SZ && type != REG_EXPAND_SZ)
         return L"";
 
-    // Validate size alignment
     if (size % sizeof(wchar_t) != 0) {
         LogError("[-] Registry value has invalid size (not wchar_t aligned): " + std::to_string(size));
         return L"";
@@ -270,10 +268,6 @@ std::vector<std::string> GetLocalIPAddresses()
 
     return std::vector<std::string>(ipArray.begin(), ipArray.begin() + totalCount);
 }
-
-
-
-// ============================================================================
 
 // Helper: Check if username is a system account
 bool IsSystemAccount(const std::wstring& username)
