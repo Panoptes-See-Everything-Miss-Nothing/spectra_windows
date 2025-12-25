@@ -1,6 +1,6 @@
-#include "PrivMgmt.h"
+﻿#include "PrivMgmt.h"
 
-// Enable a specific privilege for the current process
+// Enable a given privilege for the current process
 bool EnablePrivilege(const std::wstring& privilegeName)
 {
     HANDLE hToken = nullptr;
@@ -23,9 +23,9 @@ bool EnablePrivilege(const std::wstring& privilegeName)
         return false;
     }
 
-    // Set up TOKEN_PRIVILEGES structure (AFTER successful lookup)
+    // After a successful lookup, set up TOKEN_PRIVILEGES structure
     tp.PrivilegeCount = 1;
-    tp.Privileges[0].Luid = luid;  // ? NOW luid has the correct value
+    tp.Privileges[0].Luid = luid; 
     tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
 
      // Adjust token privileges
@@ -73,9 +73,9 @@ bool DisablePrivilege(const std::wstring& privilegeName)
         return false;
     }
 
-    // Set up TOKEN_PRIVILEGES structure (AFTER successful lookup)
+    // After a successful lookup, set up TOKEN_PRIVILEGES structure
     tp.PrivilegeCount = 1;
-    tp.Privileges[0].Luid = luid;  // ? NOW luid has the correct value
+    tp.Privileges[0].Luid = luid;
     tp.Privileges[0].Attributes = 0;  // Disable
 
     if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr))
