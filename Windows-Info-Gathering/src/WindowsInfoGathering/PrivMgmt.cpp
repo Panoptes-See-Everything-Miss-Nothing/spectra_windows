@@ -6,10 +6,6 @@ bool EnablePrivilege(const std::wstring& privilegeName)
     HANDLE hToken = nullptr;
     TOKEN_PRIVILEGES tp = {};
     LUID luid = {};
-    // Set up TOKEN_PRIVILEGES structure
-    tp.PrivilegeCount = 1;
-    tp.Privileges[0].Luid = luid;
-    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
     DWORD error = 0;
 
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
@@ -26,6 +22,11 @@ bool EnablePrivilege(const std::wstring& privilegeName)
         LogError("[-] Failed to lookup privilege '" + WideToUtf8(privilegeName) + "', error: " + std::to_string(error));
         return false;
     }
+
+    // Set up TOKEN_PRIVILEGES structure (AFTER successful lookup)
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;  // ? NOW luid has the correct value
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
 
      // Adjust token privileges
     if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr))
@@ -57,10 +58,6 @@ bool DisablePrivilege(const std::wstring& privilegeName)
     TOKEN_PRIVILEGES tp = {};
     LUID luid = {};
     DWORD error = 0;
-    // Set up TOKEN_PRIVILEGES structure
-    tp.PrivilegeCount = 1;
-    tp.Privileges[0].Luid = luid;
-    tp.Privileges[0].Attributes = 0;  // Disable
 
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
     {
@@ -75,6 +72,11 @@ bool DisablePrivilege(const std::wstring& privilegeName)
         LogError("[-] Failed to lookup privilege for removal, error: " + std::to_string(error));
         return false;
     }
+
+    // Set up TOKEN_PRIVILEGES structure (AFTER successful lookup)
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;  // ? NOW luid has the correct value
+    tp.Privileges[0].Attributes = 0;  // Disable
 
     if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr))
     {
