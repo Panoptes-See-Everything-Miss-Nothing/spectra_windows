@@ -90,20 +90,42 @@ std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
     }
 
     HKEY hKey = nullptr;
-    if (RegOpenKeyExW(HKEY_USERS, registryPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+     // TO DO: Debug this part for user 'kapil'. The user's reg key is loaded and accessible
+    // but none of the statements in this IF block are executed for some reason.
+    LONG result = RegOpenKeyExW(HKEY_USERS, registryPath.c_str(), 0, KEY_READ, &hKey);
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to open the registry key '" + WideToUtf8(registryPath) +
+            "' for user " + WideToUtf8(userProfile.username) +
+            ", error: " + std::to_string(result) + " - " + GetWindowsErrorMessage(result));
+    }
+    else
     {
         DWORD index = 0;
         WCHAR name[256] = {};
         DWORD nameSize = 256;
-        LONG result;
+        LONG enumResult;
 
-        while ((result = RegEnumKeyExW(hKey, index, name, &nameSize,
-                                       nullptr, nullptr, nullptr, nullptr)) == ERROR_SUCCESS)
+        LogError("[+] Opened the registry key '" + WideToUtf8(registryPath) + "' for user " + WideToUtf8(userProfile.username));
+
+        // Check the first enumeration call
+        enumResult = RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr);
+        if (enumResult == ERROR_NO_MORE_ITEMS)
+        {
+            LogError("[+] Registry key exists but has no subkeys (no apps installed) for user " + WideToUtf8(userProfile.username));
+        }
+        else if (enumResult != ERROR_SUCCESS)
+        {
+            LogError("[-] Failed to enumerate registry subkeys, error: " + std::to_string(enumResult) + " - " + GetWindowsErrorMessage(enumResult));
+        }
+
+        // Now do the loop with the result we already have
+        while (enumResult == ERROR_SUCCESS)
         {
             HKEY hAppKey = nullptr;
-            std::wstring appKeyPath = registryPath + L"\\" + name;
-
-            if (RegOpenKeyExW(HKEY_USERS, appKeyPath.c_str(), 0, KEY_READ, &hAppKey) == ERROR_SUCCESS)
+            
+            // Open RELATIVE to parent handle, not absolute path
+            if (RegOpenKeyExW(hKey, name, 0, KEY_READ, &hAppKey) == ERROR_SUCCESS)
             {
                 InstalledApp app;
                 app.displayName = GetRegistryString(hAppKey, L"DisplayName");
@@ -118,10 +140,18 @@ std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
 
                 RegCloseKey(hAppKey);
             }
+            else
+            {
+                LogError("[-] Failed to open registry key for app: " + WideToUtf8(name) + 
+                         " for user: " + WideToUtf8(userProfile.username));
+            }
 
             index++;
             nameSize = 256;
             ZeroMemory(name, sizeof(name));
+            
+            // Get next item
+            enumResult = RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr);
         }
 
         RegCloseKey(hKey);

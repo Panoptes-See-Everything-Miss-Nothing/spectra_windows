@@ -37,3 +37,6 @@ std::string WideToUtf8(const std::wstring& wstr);
 
 // Helper: Check if username is a system account
 bool IsSystemAccount(const std::wstring& username);
+
+// Helper: Translate Windows error code to message
+std::string GetWindowsErrorMessage(LONG errorCode);

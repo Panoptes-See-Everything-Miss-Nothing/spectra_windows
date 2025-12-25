@@ -144,3 +144,27 @@ bool IsSystemAccount(const std::wstring& username)
 
     return false;
 }
+
+// Helper: Translate Windows error code to message
+std::string GetWindowsErrorMessage(LONG errorCode)
+{
+    LPWSTR messageBuffer = nullptr;
+    FormatMessageW(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        errorCode,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPWSTR)&messageBuffer,
+        0,
+        nullptr
+    );
+
+    std::wstring errorMsg = messageBuffer ? messageBuffer : L"Unknown error";
+    LocalFree(messageBuffer);
+
+    // Remove trailing newline/carriage return
+    while (!errorMsg.empty() && (errorMsg.back() == L'\n' || errorMsg.back() == L'\r'))
+        errorMsg.pop_back();
+
+    return WideToUtf8(errorMsg);
+}
