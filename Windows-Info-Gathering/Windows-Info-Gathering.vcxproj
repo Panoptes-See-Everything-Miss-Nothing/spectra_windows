@@ -22,8 +22,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{71429df7-255b-4f37-bdfb-ddd7faaf382f}</ProjectGuid>
-    <RootNamespace>WindowsInfoGathering</RootNamespace>
+    <RootNamespace>WindowsEnum</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>WindowsEnum</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -161,13 +162,22 @@
   <ItemGroup>
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Utils\Utils.cpp" />
-    <ClCompile Include="src\WindowsInfoGathering\PrivMgmt.cpp" />
-    <ClCompile Include="src\WindowsInfoGathering\WindowsInfoGathering.cpp" />
+    <ClCompile Include="src\WindowsEnum\AppXPackages.cpp" />
+    <ClCompile Include="src\WindowsEnum\MachineInfo.cpp" />
+    <ClCompile Include="src\WindowsEnum\PrivMgmt.cpp" />
+    <ClCompile Include="src\WindowsEnum\RegistryUtils.cpp" />
+    <ClCompile Include="src\WindowsEnum\UserProfiles.cpp" />
+    <ClCompile Include="src\WindowsEnum\Win32Apps.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h" />
-    <ClInclude Include="src\WindowsInfoGathering\PrivMgmt.h" />
-    <ClInclude Include="src\WindowsInfoGathering\WindowsInfoGathering.h" />
+    <ClInclude Include="src\WindowsEnum\AppXPackages.h" />
+    <ClInclude Include="src\WindowsEnum\MachineInfo.h" />
+    <ClInclude Include="src\WindowsEnum\PrivMgmt.h" />
+    <ClInclude Include="src\WindowsEnum\RegistryUtils.h" />
+    <ClInclude Include="src\WindowsEnum\UserProfiles.h" />
+    <ClInclude Include="src\WindowsEnum\Win32Apps.h" />
+    <ClInclude Include="src\WindowsEnum\WindowsEnum.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />

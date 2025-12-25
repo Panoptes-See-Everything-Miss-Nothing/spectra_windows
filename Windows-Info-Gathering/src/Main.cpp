@@ -1,5 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
-#include "WindowsInfoGathering/WindowsInfoGathering.h"
+#include "WindowsEnum/WindowsEnum.h"
 #include "Utils/Utils.h"
 
 #pragma comment(lib, "Ws2_32.lib")
