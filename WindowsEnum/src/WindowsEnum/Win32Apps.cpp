@@ -129,30 +129,16 @@ std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
 
     if (hiveLoadedByUs)
     {
-        typedef LSTATUS (WINAPI *PFN_REGUNLOADKEYW)(HKEY, LPCWSTR);
-        HMODULE hAdvapi32 = GetModuleHandleW(L"advapi32.dll");
-        
-        if (hAdvapi32)
+        LONG unloadResult = RegUnLoadKeyW(HKEY_USERS, hiveKeyName.c_str());
+
+        if (unloadResult != ERROR_SUCCESS)
         {
-            PFN_REGUNLOADKEYW pfnRegUnloadKeyW = (PFN_REGUNLOADKEYW)GetProcAddress(hAdvapi32, "RegUnloadKeyW");
-            
-            if (pfnRegUnloadKeyW)
-            {
-                LONG unloadResult = pfnRegUnloadKeyW(HKEY_USERS, hiveKeyName.c_str());
-                if (unloadResult != ERROR_SUCCESS)
-                {
-                    LogError("[-] Warning: Failed to unload registry hive for user '" + WideToUtf8(userProfile.username) +
-                            "', error: " + std::to_string(unloadResult));
-                }
-                else
-                {
-                    LogError("[+] Unloaded registry hive for user: " + WideToUtf8(userProfile.username));
-                }
-            }
-            else
-            {
-                LogError("[-] Warning: RegUnloadKeyW not available, registry hive may remain loaded");
-            }
+            LogError("[-] Warning: Failed to unload registry hive for user '" + WideToUtf8(userProfile.username) +
+                    "', error: " + std::to_string(unloadResult));
+        }
+        else
+        {
+            LogError("[+] Unloaded registry hive for user: " + WideToUtf8(userProfile.username));
         }
 
         DisablePrivilege(SE_RESTORE_NAME);

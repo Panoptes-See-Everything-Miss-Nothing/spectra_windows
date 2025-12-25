@@ -8,6 +8,7 @@
 #include <chrono>
 #include <iomanip>
 #include <mutex>
+#include <WinSock2.h>    // Must be before windows.h to avoid conflicts
 #include <windows.h>     // For HKEY and basic Windows types
 #include <sstream>
 #include <vector>

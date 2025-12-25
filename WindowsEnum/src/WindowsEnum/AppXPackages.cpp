@@ -1,6 +1,5 @@
 #include "AppXPackages.h"
 #include "RegistryUtils.h"
-#include "../Utils/Utils.h"
 
 void ParsePackageFullName(const std::wstring& fullName, AppXPackage& package)
 {

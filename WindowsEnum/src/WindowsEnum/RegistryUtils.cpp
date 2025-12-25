@@ -1,5 +1,4 @@
 #include "RegistryUtils.h"
-#include "../Utils/Utils.h"
 
 std::wstring GetRegistryString(HKEY hKey, const std::wstring& valueName)
 {

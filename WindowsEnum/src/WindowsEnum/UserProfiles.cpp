@@ -1,6 +1,5 @@
 #include "UserProfiles.h"
 #include "RegistryUtils.h"
-#include "../Utils/Utils.h"
 
 std::vector<UserProfile> EnumerateUserProfiles()
 {

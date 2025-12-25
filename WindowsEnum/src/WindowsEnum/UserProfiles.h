@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#include "../Utils/Utils.h"
 #include <windows.h>
 
 // User profile information

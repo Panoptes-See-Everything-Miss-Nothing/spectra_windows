@@ -1,9 +1,7 @@
 #pragma once
 
 #include "UserProfiles.h"
-#include <string>
-#include <vector>
-#include <windows.h>
+#include "../Utils/Utils.h"
 
 // Installed application information
 struct InstalledApp

@@ -5,8 +5,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <string>
-#include <windows.h>
 #include "../Utils/Utils.h"
 
 // Link required libraries
