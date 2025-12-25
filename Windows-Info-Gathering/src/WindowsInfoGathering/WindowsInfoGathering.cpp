@@ -269,23 +269,6 @@ std::vector<std::string> GetLocalIPAddresses()
     return std::vector<std::string>(ipArray.begin(), ipArray.begin() + totalCount);
 }
 
-// Helper: Check if username is a system account
-bool IsSystemAccount(const std::wstring& username)
-{
-    const std::vector<std::wstring> systemAccounts = {
-        L"Default", L"Public", L"All Users", L"Default User",
-        L"SYSTEM", L"LOCAL SERVICE", L"NETWORK SERVICE"
-    };
-
-    for (const auto& sysAccount : systemAccounts)
-    {
-        if (_wcsicmp(username.c_str(), sysAccount.c_str()) == 0)
-            return true;
-    }
-
-    return false;
-}
-
 // Enumerate all user profiles on the system
 std::vector<UserProfile> EnumerateUserProfiles()
 {

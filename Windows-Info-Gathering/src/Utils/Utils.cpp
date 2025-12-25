@@ -130,14 +130,15 @@ std::string WideToUtf8(const std::wstring& wstr)
 // Helper: Check if username is a system account
 bool IsSystemAccount(const std::wstring& username)
 {
-    const std::vector<std::wstring> systemAccounts = {
+    const int arraySize = 7;
+    static constexpr std::array<std::wstring_view, arraySize> systemAccounts = {
         L"Default", L"Public", L"All Users", L"Default User",
         L"SYSTEM", L"LOCAL SERVICE", L"NETWORK SERVICE"
     };
 
     for (const auto& sysAccount : systemAccounts)
     {
-        if (_wcsicmp(username.c_str(), sysAccount.c_str()) == 0)
+        if (_wcsicmp(username.c_str(), sysAccount.data()) == 0)
             return true;
     }
 
