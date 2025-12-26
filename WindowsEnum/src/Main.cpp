@@ -1,15 +1,16 @@
 #define WIN32_LEAN_AND_MEAN
 #include "WindowsEnum/WindowsEnum.h"
 #include "Utils/Utils.h"
+#include <unordered_map>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")  // For registry and privilege APIs (lowercase)
 
 std::string GenerateJSON()
 {
-    std::map<std::wstring, std::vector<InstalledApp>> userApps;
-    std::map<std::wstring, std::wstring> userSIDs;  // Map username -> SID
-    std::map<std::wstring, std::vector<AppXPackage>> userAppXPackages;  // Map username -> AppX packages
+    std::unordered_map<std::wstring, std::vector<InstalledApp>> userApps;
+    std::unordered_map<std::wstring, std::wstring> userSIDs;  // Map username -> SID
+    std::unordered_map<std::wstring, std::vector<AppXPackage>> userAppXPackages;  // Map username -> AppX packages
     std::vector<InstalledApp> systemApps = {};
     MachineNames machineNames = GetMachineName();
     std::vector<std::string> svipAddresses = {};
