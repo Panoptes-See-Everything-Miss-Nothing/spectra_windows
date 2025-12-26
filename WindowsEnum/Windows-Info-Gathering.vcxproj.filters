@@ -39,6 +39,12 @@
     <ClCompile Include="src\WindowsEnum\AppXPackages.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\WindowsEnum\VSSSnapshot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\WindowsEnum\RegistryHiveLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h">
@@ -65,8 +71,15 @@
     <ClInclude Include="src\WindowsEnum\WindowsEnum.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\WindowsEnum\VSSSnapshot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\WindowsEnum\RegistryHiveLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />
+    <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
   </ItemGroup>
 </Project>

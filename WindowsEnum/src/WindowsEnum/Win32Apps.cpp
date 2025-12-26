@@ -1,7 +1,11 @@
 #include "Win32Apps.h"
 #include "RegistryUtils.h"
 #include "PrivMgmt.h"
+#include "VSSSnapshot.h"
+#include "RegistryHiveLoader.h"
 #include "../Utils/Utils.h"
+#include <sstream>
+#include <iomanip>
 
 std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring& subkey)
 {
@@ -55,76 +59,128 @@ std::vector<InstalledApp> GetAppsFromUninstallKey(HKEY root, const std::wstring&
 std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
 {
     std::vector<InstalledApp> apps;
-    bool hiveLoadedByUs = false;
-    std::wstring hiveKeyName = L"TempHive_" + userProfile.username;
-    std::wstring ntUserPath = userProfile.profilePath + L"\\NTUSER.DAT";
 
-    if (!userProfile.isLoaded)
+    // Use VSS snapshot approach for all users
+    LogError("[+] Enumerating apps for user '" + WideToUtf8(userProfile.username) + "' using VSS snapshot approach.");
+
+    // Determine the volume containing the user profile
+    std::wstring profilePath = userProfile.profilePath;
+    std::wstring volumePath;
+    
+    // Extract volume (e.g., "C:\\" from "C:\\Users\\username")
+    if (profilePath.length() >= 3 && profilePath[1] == L':')
     {
-        if (!EnablePrivilege(SE_RESTORE_NAME) || !EnablePrivilege(SE_BACKUP_NAME))
-        {
-            LogError("[-] Failed to enable privileges for loading user hive: " + WideToUtf8(userProfile.username));
-            return apps;
-        }
-
-        LONG loadResult = RegLoadKeyW(HKEY_USERS, hiveKeyName.c_str(), ntUserPath.c_str());
-        if (loadResult != ERROR_SUCCESS)
-        {
-            LogError("[-] Failed to load registry hive for user '" + WideToUtf8(userProfile.username) +
-                    "', error: " + std::to_string(loadResult));
-            return apps;
-        }
-
-        hiveLoadedByUs = true;
-        LogError("[+] Loaded registry hive for user: " + WideToUtf8(userProfile.username));
-    }
-
-    std::wstring registryPath;
-    if (hiveLoadedByUs)
-    {
-        registryPath = hiveKeyName + L"\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+        volumePath = profilePath.substr(0, 3); // e.g., "C:\\"
     }
     else
     {
-        registryPath = userProfile.sid + L"\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+        LogError("[-] Invalid profile path format: " + WideToUtf8(profilePath));
+        return apps;
     }
 
+    // Step 1: Create VSS snapshot
+    VSSSnapshot snapshot;
+    if (!snapshot.CreateSnapshot(volumePath))
+    {
+        LogError("[-] Failed to create VSS snapshot for volume: " + WideToUtf8(volumePath));
+        return apps;
+    }
+
+    // Step 2: Create secure temporary directory
+    SecureTempDirectory tempDir(L"C:\\SpectraVM_Temp");
+    if (!tempDir.IsValid())
+    {
+        LogError("[-] Failed to create secure temporary directory");
+        return apps;
+    }
+
+    // Step 3: Copy NTUSER.DAT and transaction logs directly from the snapshot
+    // VSS snapshots can be accessed directly via their device path
+    std::wstring relativeProfilePath = profilePath.substr(3); // Remove "C:\\" to get relative path
+    std::wstring snapshotProfilePath = snapshot.GetSnapshotPath() + L"\\" + relativeProfilePath;
+    
+    // Copy NTUSER.DAT
+    std::wstring snapshotNtUserPath = snapshotProfilePath + L"\\NTUSER.DAT";
+    std::wstring tempNtUserPath = tempDir.GetPath() + L"\\NTUSER.DAT";
+
+    if (!CopyFileW(snapshotNtUserPath.c_str(), tempNtUserPath.c_str(), FALSE))
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to copy NTUSER.DAT from snapshot for user: " + WideToUtf8(userProfile.username) +
+                 ", error: " + std::to_string(error) + " - " + GetWindowsErrorMessage(error));
+        return apps;
+    }
+
+    LogError("[+] Copied NTUSER.DAT from VSS snapshot for user: " + WideToUtf8(userProfile.username));
+
+    // Copy transaction log files if they exist (these are needed for registry consistency)
+    std::vector<std::wstring> logFiles = {
+        L"NTUSER.DAT.LOG",
+        L"NTUSER.DAT.LOG1",
+        L"NTUSER.DAT.LOG2"
+    };
+
+    for (const auto& logFile : logFiles)
+    {
+        std::wstring sourceLog = snapshotProfilePath + L"\\" + logFile;
+        std::wstring destLog = tempDir.GetPath() + L"\\" + logFile;
+        
+        // Try to copy, but don't fail if the log file doesn't exist
+        if (CopyFileW(sourceLog.c_str(), destLog.c_str(), FALSE))
+        {
+            LogError("[+] Copied " + WideToUtf8(logFile) + " for user: " + WideToUtf8(userProfile.username));
+        }
+        else
+        {
+            DWORD error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND)
+            {
+                LogError("[-] Warning: Failed to copy " + WideToUtf8(logFile) + ", error: " + std::to_string(error));
+            }
+        }
+    }
+
+    // Step 4: Remove read-only attribute from copied files (VSS copies preserve attributes)
+    DWORD attributes = GetFileAttributesW(tempNtUserPath.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_READONLY))
+    {
+        SetFileAttributesW(tempNtUserPath.c_str(), attributes & ~FILE_ATTRIBUTE_READONLY);
+        LogError("[+] Removed read-only attribute from NTUSER.DAT");
+    }
+
+    // Step 5: Load the hive read-only using RAII
+    std::wstring hiveKeyName = L"SpectraVM_Hive_" + userProfile.username;
+    RegistryHiveLoader hiveLoader(tempNtUserPath, hiveKeyName);
+
+    if (!hiveLoader.IsLoaded())
+    {
+        LogError("[-] Failed to load registry hive for user: " + WideToUtf8(userProfile.username));
+        return apps;
+    }
+
+    // Step 6: Enumerate installed apps from the loaded hive
+    std::wstring registryPath = hiveKeyName + L"\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
     HKEY hKey = nullptr;
-     // TO DO: Debug this part for user 'kapil'. The user's reg key is loaded and accessible
-    // but none of the statements in this IF block are executed for some reason.
+
     LONG result = RegOpenKeyExW(HKEY_USERS, registryPath.c_str(), 0, KEY_READ, &hKey);
     if (result != ERROR_SUCCESS)
     {
-        LogError("[-] Failed to open the registry key '" + WideToUtf8(registryPath) +
-            "' for user " + WideToUtf8(userProfile.username) +
-            ", error: " + std::to_string(result) + " - " + GetWindowsErrorMessage(result));
+        LogError("[-] Failed to open registry key in loaded hive for user '" + WideToUtf8(userProfile.username) +
+                 "', error: " + std::to_string(result) + " - " + GetWindowsErrorMessage(result));
     }
     else
     {
+        LogError("[+] Successfully opened registry key in loaded hive for user: " + WideToUtf8(userProfile.username));
+
         DWORD index = 0;
         WCHAR name[256] = {};
         DWORD nameSize = 256;
         LONG enumResult;
 
-        LogError("[+] Opened the registry key '" + WideToUtf8(registryPath) + "' for user " + WideToUtf8(userProfile.username));
-
-        // Check the first enumeration call
-        enumResult = RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr);
-        if (enumResult == ERROR_NO_MORE_ITEMS)
-        {
-            LogError("[+] Registry key exists but has no subkeys (no apps installed) for user " + WideToUtf8(userProfile.username));
-        }
-        else if (enumResult != ERROR_SUCCESS)
-        {
-            LogError("[-] Failed to enumerate registry subkeys, error: " + std::to_string(enumResult) + " - " + GetWindowsErrorMessage(enumResult));
-        }
-
-        // Now do the loop with the result we already have
-        while (enumResult == ERROR_SUCCESS)
+        while ((enumResult = RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr)) == ERROR_SUCCESS)
         {
             HKEY hAppKey = nullptr;
             
-            // Open RELATIVE to parent handle, not absolute path
             if (RegOpenKeyExW(hKey, name, 0, KEY_READ, &hAppKey) == ERROR_SUCCESS)
             {
                 InstalledApp app;
@@ -134,47 +190,26 @@ std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
                 app.installLocation = GetRegistryString(hAppKey, L"InstallLocation");
                 app.uninstallString = GetRegistryString(hAppKey, L"UninstallString");
                 app.installDate = GetRegistryString(hAppKey, L"InstallDate");
+                app.versionMajor = L"";
+                app.versionMinor = L"";
+                app.modifyPath = L"";
+                app.quietUninstallString = L"";
 
                 if (!app.displayName.empty())
                     apps.push_back(app);
 
                 RegCloseKey(hAppKey);
             }
-            else
-            {
-                LogError("[-] Failed to open registry key for app: " + WideToUtf8(name) + 
-                         " for user: " + WideToUtf8(userProfile.username));
-            }
 
             index++;
             nameSize = 256;
             ZeroMemory(name, sizeof(name));
-            
-            // Get next item
-            enumResult = RegEnumKeyExW(hKey, index, name, &nameSize, nullptr, nullptr, nullptr, nullptr);
         }
 
         RegCloseKey(hKey);
     }
 
-    if (hiveLoadedByUs)
-    {
-        LONG unloadResult = RegUnLoadKeyW(HKEY_USERS, hiveKeyName.c_str());
-
-        if (unloadResult != ERROR_SUCCESS)
-        {
-            LogError("[-] Warning: Failed to unload registry hive for user '" + WideToUtf8(userProfile.username) +
-                    "', error: " + std::to_string(unloadResult));
-        }
-        else
-        {
-            LogError("[+] Unloaded registry hive for user: " + WideToUtf8(userProfile.username));
-        }
-
-        DisablePrivilege(SE_RESTORE_NAME);
-        DisablePrivilege(SE_BACKUP_NAME);
-    }
-
+    // Step 7: Cleanup (RAII handles hive unloading and temp directory removal)
     LogError("[+] Found " + std::to_string(apps.size()) + " apps for user: " + WideToUtf8(userProfile.username));
 
     return apps;
