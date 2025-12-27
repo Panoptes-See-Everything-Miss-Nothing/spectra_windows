@@ -40,3 +40,23 @@ bool IsSystemAccount(const std::wstring& username);
 
 // Helper: Translate Windows error code to message
 std::string GetWindowsErrorMessage(LONG errorCode);
+
+// Directory Security Validation Functions
+
+// Check if a path is a directory (not a file)
+bool IsDirectory(const std::wstring& path);
+
+// Check if a path is a reparse point (symlink, junction, etc.)
+bool IsReparsePoint(const std::wstring& path);
+
+// Verify that a directory is owned by the current user or SYSTEM
+bool IsDirectoryOwnedByTrustedUser(const std::wstring& path);
+
+// Validate that a directory is safe to use (not a symlink, owned by trusted user)
+bool IsDirectorySafeToUse(const std::wstring& path);
+
+// Get the current user's SID
+PSID GetCurrentUserSid();
+
+// Free a SID allocated by GetCurrentUserSid
+void FreeUserSid(PSID pSid);

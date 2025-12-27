@@ -62,6 +62,9 @@ private:
 
     // Secure the directory (only accessible by current user)
     bool SecureDirectory();
+    
+    // Create a security descriptor that grants access only to current user
+    bool CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCRIPTOR* ppSD);
 };
 
 // Helper: Copy a file from VSS snapshot to temporary location

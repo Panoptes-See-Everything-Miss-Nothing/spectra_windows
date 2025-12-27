@@ -189,6 +189,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />
+    <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
     <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -81,5 +81,6 @@
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />
     <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
+    <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
   </ItemGroup>
 </Project>

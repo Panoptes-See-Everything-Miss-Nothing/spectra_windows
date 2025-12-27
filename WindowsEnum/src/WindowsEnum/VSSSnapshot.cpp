@@ -4,6 +4,7 @@
 #include <sddl.h>
 #include <aclapi.h>
 #include <sstream>
+#include <chrono>
 
 // Implementation details hidden from header
 class VSSSnapshotImpl
@@ -264,29 +265,67 @@ bool VSSSnapshot::IsValid() const
 
 // SecureTempDirectory implementation
 SecureTempDirectory::SecureTempDirectory(const std::wstring& basePath)
-    : m_path(basePath), m_valid(false)
+    : m_valid(false)
 {
-    // Create the directory
-    if (!CreateDirectoryW(m_path.c_str(), nullptr))
+    // Create a unique directory name to avoid race conditions and cleanup issues
+    // Format: basePath_PID_Timestamp
+    DWORD pid = GetCurrentProcessId();
+    auto now = std::chrono::system_clock::now().time_since_epoch().count();
+    
+    std::wstringstream uniquePath;
+    uniquePath << basePath << L"_" << pid << L"_" << now;
+    m_path = uniquePath.str();
+
+    // Verify parent directory doesn't already exist as a file or reparse point
+    std::wstring parentPath = basePath;
+    DWORD parentAttribs = GetFileAttributesW(parentPath.c_str());
+    
+    if (parentAttribs != INVALID_FILE_ATTRIBUTES)
     {
-        DWORD error = GetLastError();
-        if (error != ERROR_ALREADY_EXISTS)
+        // Parent exists - validate it's safe
+        if (!IsDirectorySafeToUse(parentPath))
         {
-            LogError("[-] Failed to create secure temp directory: " + WideToUtf8(m_path) + 
-                     ", error: " + std::to_string(error));
+            LogError("[-] Parent directory is not safe to use: " + WideToUtf8(parentPath));
             return;
         }
     }
 
-    // Secure the directory
+    // Create the unique directory with a security descriptor that only allows current user
+    SECURITY_ATTRIBUTES sa = {};
+    PSECURITY_DESCRIPTOR pSD = nullptr;
+    
+    if (!CreateSecurityDescriptorForCurrentUser(&pSD))
+    {
+        LogError("[-] Failed to create security descriptor for temp directory");
+        return;
+    }
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = pSD;
+    sa.bInheritHandle = FALSE;
+
+    if (!CreateDirectoryW(m_path.c_str(), &sa))
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to create unique secure temp directory: " + WideToUtf8(m_path) + 
+                 ", error: " + std::to_string(error) + " - " + GetWindowsErrorMessage(error));
+        LocalFree(pSD);
+        return;
+    }
+
+    LocalFree(pSD);
+    LogError("[+] Created unique secure temp directory: " + WideToUtf8(m_path));
+
+    // Apply security settings to ensure they're correct
     if (!SecureDirectory())
     {
         LogError("[-] Failed to secure temp directory: " + WideToUtf8(m_path));
+        // Try to remove the directory we just created
+        RemoveDirectoryW(m_path.c_str());
         return;
     }
 
     m_valid = true;
-    LogError("[+] Created secure temp directory: " + WideToUtf8(m_path));
 }
 
 SecureTempDirectory::~SecureTempDirectory()
@@ -357,7 +396,7 @@ bool SecureTempDirectory::SecureDirectory()
         return false;
     }
 
-    // Set the new DACL
+    // Set the new DACL with PROTECTED flag to prevent inheritance
     dwResult = SetNamedSecurityInfoW(const_cast<LPWSTR>(m_path.c_str()),
                                       SE_FILE_OBJECT,
                                       DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
@@ -372,6 +411,81 @@ bool SecureTempDirectory::SecureDirectory()
         return false;
     }
 
+    return true;
+}
+
+bool SecureTempDirectory::CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCRIPTOR* ppSD)
+{
+    // Get current user's SID
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+    {
+        LogError("[-] Failed to open process token");
+        return false;
+    }
+
+    DWORD dwBufferSize = 0;
+    GetTokenInformation(hToken, TokenUser, nullptr, 0, &dwBufferSize);
+    
+    std::vector<BYTE> buffer(dwBufferSize);
+    TOKEN_USER* pTokenUser = reinterpret_cast<TOKEN_USER*>(buffer.data());
+    
+    if (!GetTokenInformation(hToken, TokenUser, pTokenUser, dwBufferSize, &dwBufferSize))
+    {
+        CloseHandle(hToken);
+        LogError("[-] Failed to get token information");
+        return false;
+    }
+
+    // Create DACL with only current user
+    EXPLICIT_ACCESSW ea = {};
+    ea.grfAccessPermissions = GENERIC_ALL;
+    ea.grfAccessMode = SET_ACCESS;
+    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea.Trustee.TrusteeType = TRUSTEE_IS_USER;
+    ea.Trustee.ptstrName = reinterpret_cast<LPWSTR>(pTokenUser->User.Sid);
+
+    PACL pDacl = nullptr;
+    DWORD dwResult = SetEntriesInAclW(1, &ea, nullptr, &pDacl);
+    
+    if (dwResult != ERROR_SUCCESS)
+    {
+        CloseHandle(hToken);
+        LogError("[-] Failed to create DACL, error: " + std::to_string(dwResult));
+        return false;
+    }
+
+    // Allocate and initialize security descriptor
+    *ppSD = LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
+    if (*ppSD == nullptr)
+    {
+        LocalFree(pDacl);
+        CloseHandle(hToken);
+        LogError("[-] Failed to allocate security descriptor");
+        return false;
+    }
+
+    if (!InitializeSecurityDescriptor(*ppSD, SECURITY_DESCRIPTOR_REVISION))
+    {
+        LocalFree(pDacl);
+        LocalFree(*ppSD);
+        CloseHandle(hToken);
+        LogError("[-] Failed to initialize security descriptor");
+        return false;
+    }
+
+    if (!SetSecurityDescriptorDacl(*ppSD, TRUE, pDacl, FALSE))
+    {
+        LocalFree(pDacl);
+        LocalFree(*ppSD);
+        CloseHandle(hToken);
+        LogError("[-] Failed to set DACL in security descriptor");
+        return false;
+    }
+
+    LocalFree(pDacl);
+    CloseHandle(hToken);
     return true;
 }
 
