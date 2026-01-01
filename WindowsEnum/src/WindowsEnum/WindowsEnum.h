@@ -7,5 +7,6 @@
 #include "RegistryUtils.h"
 #include "UserProfiles.h"
 #include "Win32Apps.h"
+#include "MsiApps.h"
 #include "AppXPackages.h"
 #include "PrivMgmt.h"

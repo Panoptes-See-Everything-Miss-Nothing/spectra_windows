@@ -180,6 +180,7 @@
     <ClCompile Include="src\Utils\Utils.cpp" />
     <ClCompile Include="src\WindowsEnum\AppXPackages.cpp" />
     <ClCompile Include="src\WindowsEnum\MachineInfo.cpp" />
+    <ClCompile Include="src\WindowsEnum\MsiApps.cpp" />
     <ClCompile Include="src\WindowsEnum\PrivMgmt.cpp" />
     <ClCompile Include="src\WindowsEnum\RegistryHiveLoader.cpp" />
     <ClCompile Include="src\WindowsEnum\RegistryUtils.cpp" />
@@ -192,6 +193,7 @@
     <ClInclude Include="src\Utils\Utils.h" />
     <ClInclude Include="src\WindowsEnum\AppXPackages.h" />
     <ClInclude Include="src\WindowsEnum\MachineInfo.h" />
+    <ClInclude Include="src\WindowsEnum\MsiApps.h" />
     <ClInclude Include="src\WindowsEnum\PrivMgmt.h" />
     <ClInclude Include="src\WindowsEnum\RegistryHiveLoader.h" />
     <ClInclude Include="src\WindowsEnum\RegistryUtils.h" />

@@ -12,7 +12,9 @@ std::string GenerateJSON()
     std::unordered_map<std::wstring, std::vector<InstalledApp>> userApps;
     std::unordered_map<std::wstring, std::wstring> userSIDs;  // Map username -> SID
     std::unordered_map<std::wstring, std::vector<ModernAppPackage>> userAppXPackages;  // Map username -> Modern AppX packages (WinRT)
+    std::unordered_map<std::wstring, std::vector<MsiApp>> userMsiApps;  // Map username -> MSI products
     std::vector<InstalledApp> systemApps = {};
+    std::vector<MsiApp> systemMsiApps = {};
     MachineNames machineNames = GetMachineName();
     std::vector<std::string> svipAddresses = {};
 
@@ -28,12 +30,21 @@ std::string GenerateJSON()
     userApps[L"SYSTEM"] = systemApps;
     userSIDs[L"SYSTEM"] = L"S-1-5-18";  // Well-known SID for SYSTEM
 
+    // Enumerate MSI-installed products (system-wide)
+    systemMsiApps = EnumerateMsiProducts();
+    if (!systemMsiApps.empty()) {
+        userMsiApps[L"SYSTEM"] = systemMsiApps;
+    }
+
     // Enumerate all user profiles and collect their apps
     std::vector<UserProfile> profiles = EnumerateUserProfiles();
     
     for (const auto& profile : profiles) {
         // Get Win32 apps for this user (don't shadow the outer map!)
         std::vector<InstalledApp> profileApps = GetUserInstalledApps(profile);
+        
+        // Get MSI products for this user
+        std::vector<MsiApp> profileMsiApps = EnumerateMsiProductsForUser(profile.sid);
         
         // DEPRECATED: Registry-based AppX enumeration (limited data quality)
         // std::vector<AppXPackage> profilePackages = GetUserAppXPackages(profile.sid);
@@ -46,6 +57,10 @@ std::string GenerateJSON()
         if (!profileApps.empty()) {
             userApps[profile.username] = profileApps;
             userSIDs[profile.username] = profile.sid;
+        }
+        
+        if (!profileMsiApps.empty()) {
+            userMsiApps[profile.username] = profileMsiApps;
         }
         
         if (!profilePackages.empty()) {
@@ -114,6 +129,33 @@ std::string GenerateJSON()
         }
 
         out << "      ]";
+        
+        // Add MSI products if available for this user
+        if (userMsiApps.find(username) != userMsiApps.end()) {
+            out << ",\n";
+            out << "      \"msiProducts\": [\n";
+            
+            const auto& msiProducts = userMsiApps[username];
+            for (size_t i = 0; i < msiProducts.size(); i++)
+            {
+                out << "        {\n";
+                out << "          \"productCode\": " << JsonEscape(msiProducts[i].productCode) << ",\n";
+                out << "          \"productName\": " << JsonEscape(msiProducts[i].productName) << ",\n";
+                out << "          \"productVersion\": " << JsonEscape(msiProducts[i].productVersion) << ",\n";
+                out << "          \"publisher\": " << JsonEscape(msiProducts[i].publisher) << ",\n";
+                out << "          \"installDate\": " << JsonEscape(msiProducts[i].installDate) << ",\n";
+                out << "          \"installLocation\": " << JsonEscape(msiProducts[i].installLocation) << ",\n";
+                out << "          \"installSource\": " << JsonEscape(msiProducts[i].installSource) << ",\n";
+                out << "          \"packageCode\": " << JsonEscape(msiProducts[i].packageCode) << ",\n";
+                out << "          \"assignmentType\": " << JsonEscape(msiProducts[i].assignmentType) << ",\n";
+                out << "          \"language\": " << JsonEscape(msiProducts[i].language) << "\n";
+                out << "        }";
+                if (i + 1 < msiProducts.size()) out << ",";
+                out << "\n";
+            }
+            
+            out << "      ]";
+        }
         
         // Add Modern AppX packages if available for this user
         if (userAppXPackages.find(username) != userAppXPackages.end()) {

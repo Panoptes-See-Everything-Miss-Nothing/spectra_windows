@@ -1,11 +1,14 @@
+#define WIN32_LEAN_AND_MEAN
 #include "WinAppXPackages.h"
+#include <Windows.h>
+#include <objbase.h>
+#include <sddl.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Management.Deployment.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Storage.h>
 #include <appmodel.h>
-#include <sddl.h>
 
 // Link required libraries
 #pragma comment(lib, "WindowsApp.lib")
