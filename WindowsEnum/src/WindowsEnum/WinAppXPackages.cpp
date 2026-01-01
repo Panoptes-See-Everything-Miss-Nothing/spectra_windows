@@ -264,9 +264,12 @@ std::vector<ModernAppPackage> EnumerateAllModernAppPackages()
     return packages;
 }
 
-std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid)
+std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid, const std::wstring& username)
 {
     std::vector<ModernAppPackage> packages;
+    
+    // Determine display name for logging (username if provided, otherwise SID)
+    std::string userDisplayName = !username.empty() ? WideToUtf8(username) : WideToUtf8(userSid);
     
     // Runtime check for Windows 8+
     if (!IsModernAppsSupported())
@@ -286,10 +289,12 @@ std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& us
 
     try
     {
-        // Initialize WinRT
+        // Initialize WinRT (handles COM initialization internally)
+        // If COM is already initialized in a different mode (e.g., from registry operations),
+        // init_apartment() will handle it gracefully
         init_apartment();
         
-        LogError("[+] Enumerating modern app packages for user SID: " + WideToUtf8(userSid));
+        LogError("[+] Enumerating modern app packages for user: " + userDisplayName);
         
         // Create PackageManager instance
         PackageManager packageManager;
@@ -375,17 +380,17 @@ std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& us
         }
         
         LogError("[+] Found " + std::to_string(packages.size()) + 
-                 " modern app packages for user: " + WideToUtf8(userSid));
+                 " modern app packages for user: " + userDisplayName);
     }
     catch (const hresult_error& ex)
     {
         std::wstring errorMsg = ex.message().c_str();
-        LogError("[-] PackageManager enumeration failed for user: " + WideToUtf8(errorMsg) + 
+        LogError("[-] PackageManager enumeration failed for user " + userDisplayName + ": " + WideToUtf8(errorMsg) +
                  ", HRESULT: 0x" + std::to_string(static_cast<unsigned long>(ex.code())));
     }
     catch (const std::exception& ex)
     {
-        LogError(std::string("[-] Exception during user package enumeration: ") + ex.what());
+        LogError(std::string("[-] Exception during package enumeration for user ") + userDisplayName + ": " + ex.what());
     }
     
     return packages;
@@ -402,7 +407,7 @@ std::vector<ModernAppPackage> EnumerateAllModernAppPackages()
     return packages;
 }
 
-std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid)
+std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid, const std::wstring& username)
 {
     std::vector<ModernAppPackage> packages;
     LogError("[*] Modern apps (UWP/MSIX) are not supported on Windows " + GetWindowsVersionString());

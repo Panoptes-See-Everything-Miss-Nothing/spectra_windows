@@ -51,7 +51,9 @@ private:
 std::vector<ModernAppPackage> EnumerateAllModernAppPackages();
 
 // Get packages for a specific user using Package Manager API
-std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid);
+// userSid: The security identifier of the user
+// username: Optional username for logging purposes (defaults to empty string, will use SID)
+std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid, const std::wstring& username = L"");
 
 // Helper: Get package architecture as string
 std::wstring GetArchitectureString(UINT32 architecture);

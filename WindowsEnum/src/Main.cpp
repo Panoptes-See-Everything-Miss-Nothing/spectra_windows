@@ -39,7 +39,8 @@ std::string GenerateJSON()
         // std::vector<AppXPackage> profilePackages = GetUserAppXPackages(profile.sid);
         
         // NEW: WinRT-based modern app enumeration (Windows 8+, gracefully skips on Windows 7)
-        std::vector<ModernAppPackage> profilePackages = GetModernAppPackagesForUser(profile.sid);
+        // Pass username for better logging
+        std::vector<ModernAppPackage> profilePackages = GetModernAppPackagesForUser(profile.sid, profile.username);
         
         // Add to maps if we found any apps
         if (!profileApps.empty()) {
@@ -141,9 +142,23 @@ std::string GenerateJSON()
                 out << "          \"isDevelopmentMode\": " << (packages[i].isDevelopmentMode ? "true" : "false") << ",\n";
                 out << "          \"users\": [";
                 
+                // Resolve SIDs to usernames
                 for (size_t j = 0; j < packages[i].users.size(); j++)
                 {
-                    out << JsonEscape(packages[i].users[j]);
+                    const std::wstring& userSid = packages[i].users[j];
+                    
+                    // Find username for this SID by searching through userSIDs map
+                    std::wstring resolvedUsername = L"Unknown";
+                    for (const auto& sidPair : userSIDs)
+                    {
+                        if (sidPair.second == userSid)
+                        {
+                            resolvedUsername = sidPair.first;
+                            break;
+                        }
+                    }
+                    
+                    out << "{\"sid\": " << JsonEscape(userSid) << ", \"username\": " << JsonEscape(resolvedUsername) << "}";
                     if (j + 1 < packages[i].users.size()) out << ", ";
                 }
                 
