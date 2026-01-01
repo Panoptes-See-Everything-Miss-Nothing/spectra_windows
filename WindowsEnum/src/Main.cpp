@@ -222,6 +222,37 @@ int main()
     }
 #endif
 
+    // Check Windows version - require Windows 10 or later
+    OSVERSIONINFOEXW osvi = {};
+    osvi.dwOSVersionInfoSize = sizeof(osvi);
+    
+    typedef LONG(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
+    auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(
+        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
+    
+    if (RtlGetVersion)
+    {
+        RtlGetVersion(reinterpret_cast<PRTL_OSVERSIONINFOW>(&osvi));
+    }
+    
+    // Windows 10 is version 10.0
+    if (osvi.dwMajorVersion < 10)
+    {
+        std::wstringstream msg;
+        msg << L"This application requires Windows 10 or later.\n\n"
+            << L"Current Windows version: " << osvi.dwMajorVersion << L"." << osvi.dwMinorVersion << L"\n\n"
+            << L"Please run this on Windows 10 or Windows 11.";
+        
+        MessageBoxW(nullptr, msg.str().c_str(), L"Unsupported Windows Version", MB_OK | MB_ICONERROR);
+        
+        LogError("[-] FATAL: This application requires Windows 10 or later. Current version: " + 
+                 std::to_string(osvi.dwMajorVersion) + "." + std::to_string(osvi.dwMinorVersion));
+        return 1;
+    }
+    
+    LogError("[+] Running on Windows " + std::to_string(osvi.dwMajorVersion) + "." + 
+             std::to_string(osvi.dwMinorVersion) + "." + std::to_string(osvi.dwBuildNumber));
+
     LogError("[!] IMPORTANT: This application must run as SYSTEM account to enumerate all user profiles.");
     LogError("[!] Running as Administrator is NOT sufficient.");
     LogError("[!] Use PsExec or Task Scheduler to run as SYSTEM:");

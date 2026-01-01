@@ -1,13 +1,11 @@
 #include "WinAppXPackages.h"
-
-// Only include WinRT headers if Windows 8 or later
-#if _WIN32_WINNT >= _WIN32_WINNT_WIN8
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Management.Deployment.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Storage.h>
 #include <appmodel.h>
+#include <sddl.h>
 
 // Link required libraries
 #pragma comment(lib, "WindowsApp.lib")
@@ -19,41 +17,12 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Windows::Storage;
 
-#define WINRT_AVAILABLE 1
-#else
-#define WINRT_AVAILABLE 0
-#endif
-
-#include <sddl.h>
-
-// Link kernel32 for version detection
-#pragma comment(lib, "kernel32.lib")
-
-// Helper: Check if modern apps are supported on this Windows version
-bool IsModernAppsSupported()
-{
-    // Check Windows version at runtime
-    // Modern apps require Windows 8 (6.2) or later
-    
-    OSVERSIONINFOEXW osvi = {};
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    osvi.dwMajorVersion = 6;
-    osvi.dwMinorVersion = 2;  // Windows 8 is 6.2
-
-    DWORDLONG dwlConditionMask = 0;
-    VER_SET_CONDITION(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
-    VER_SET_CONDITION(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-    return VerifyVersionInfoW(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask) != FALSE;
-}
-
 // Helper: Get Windows version string for logging
 std::string GetWindowsVersionString()
 {
     OSVERSIONINFOEXW osvi = {};
     osvi.dwOSVersionInfoSize = sizeof(osvi);
     
-    // Use RtlGetVersion for accurate version (GetVersionEx is deprecated and lies)
     typedef LONG(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
     auto RtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(
         GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"));
@@ -119,21 +88,9 @@ std::wstring GetPackageOrigin(UINT32 origin)
     }
 }
 
-#if WINRT_AVAILABLE
-// WinRT-based implementation (Windows 8+)
-
 std::vector<ModernAppPackage> EnumerateAllModernAppPackages()
 {
     std::vector<ModernAppPackage> packages;
-    
-    // Runtime check for Windows 8+
-    if (!IsModernAppsSupported())
-    {
-        LogError("[*] Modern apps not supported on Windows " + GetWindowsVersionString() + 
-                 " (requires Windows 8 or later)");
-        LogError("[*] Skipping modern app enumeration - not applicable for this OS version");
-        return packages;
-    }
     
     // Initialize COM
     ComInitializer comInit;
@@ -148,7 +105,7 @@ std::vector<ModernAppPackage> EnumerateAllModernAppPackages()
         // Initialize WinRT
         init_apartment();
         
-        LogError("[+] Initializing Windows Package Manager on Windows " + GetWindowsVersionString() + "...");
+        LogError("[+] Initializing Windows Package Manager...");
         
         // Create PackageManager instance
         PackageManager packageManager;
@@ -271,14 +228,6 @@ std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& us
     // Determine display name for logging (username if provided, otherwise SID)
     std::string userDisplayName = !username.empty() ? WideToUtf8(username) : WideToUtf8(userSid);
     
-    // Runtime check for Windows 8+
-    if (!IsModernAppsSupported())
-    {
-        LogError("[*] Modern apps not supported on Windows " + GetWindowsVersionString() + 
-                 " (requires Windows 8 or later)");
-        return packages;
-    }
-    
     // Initialize COM
     ComInitializer comInit;
     if (!comInit.IsInitialized())
@@ -393,25 +342,6 @@ std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& us
         LogError(std::string("[-] Exception during package enumeration for user ") + userDisplayName + ": " + ex.what());
     }
     
+    
     return packages;
 }
-
-#else
-// Fallback implementation for Windows 7 and earlier
-
-std::vector<ModernAppPackage> EnumerateAllModernAppPackages()
-{
-    std::vector<ModernAppPackage> packages;
-    LogError("[*] Modern apps (UWP/MSIX) are not supported on Windows " + GetWindowsVersionString());
-    LogError("[*] Modern apps require Windows 8 or later - skipping enumeration");
-    return packages;
-}
-
-std::vector<ModernAppPackage> GetModernAppPackagesForUser(const std::wstring& userSid, const std::wstring& username)
-{
-    std::vector<ModernAppPackage> packages;
-    LogError("[*] Modern apps (UWP/MSIX) are not supported on Windows " + GetWindowsVersionString());
-    return packages;
-}
-
-#endif // WINRT_AVAILABLE
