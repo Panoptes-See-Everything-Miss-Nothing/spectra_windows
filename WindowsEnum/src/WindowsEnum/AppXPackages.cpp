@@ -29,6 +29,13 @@ void ParsePackageFullName(const std::wstring& fullName, AppXPackage& package)
     }
 }
 
+/* TO Do : Why are we using registry key to get AppX packages instead of using the Windows API ?
+This fucker failed to get packages for Test_User3.. ChatGPT was installed from Microsoft Store but
+this fucker can't see it.
+More info in 'D:\SpectraInvestigationTemp'
+Also, some notes there about using Windows PackageManager APIs..*/
+
+
 std::vector<AppXPackage> EnumerateAppXPackages()
 {
     std::vector<AppXPackage> packages;

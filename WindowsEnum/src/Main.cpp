@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "WindowsEnum/WindowsEnum.h"
+#include "WindowsEnum/WinAppXPackages.h"
 #include "Utils/Utils.h"
 #include <unordered_map>
 
@@ -10,7 +11,7 @@ std::string GenerateJSON()
 {
     std::unordered_map<std::wstring, std::vector<InstalledApp>> userApps;
     std::unordered_map<std::wstring, std::wstring> userSIDs;  // Map username -> SID
-    std::unordered_map<std::wstring, std::vector<AppXPackage>> userAppXPackages;  // Map username -> AppX packages
+    std::unordered_map<std::wstring, std::vector<ModernAppPackage>> userAppXPackages;  // Map username -> Modern AppX packages (WinRT)
     std::vector<InstalledApp> systemApps = {};
     MachineNames machineNames = GetMachineName();
     std::vector<std::string> svipAddresses = {};
@@ -34,8 +35,11 @@ std::string GenerateJSON()
         // Get Win32 apps for this user (don't shadow the outer map!)
         std::vector<InstalledApp> profileApps = GetUserInstalledApps(profile);
         
-        // Get AppX packages for this user
-        std::vector<AppXPackage> profilePackages = GetUserAppXPackages(profile.sid);
+        // DEPRECATED: Registry-based AppX enumeration (limited data quality)
+        // std::vector<AppXPackage> profilePackages = GetUserAppXPackages(profile.sid);
+        
+        // NEW: WinRT-based modern app enumeration (Windows 8+, gracefully skips on Windows 7)
+        std::vector<ModernAppPackage> profilePackages = GetModernAppPackagesForUser(profile.sid);
         
         // Add to maps if we found any apps
         if (!profileApps.empty()) {
@@ -48,8 +52,11 @@ std::string GenerateJSON()
         }
     }
 
-    // Get system-wide AppX packages
-    std::vector<AppXPackage> systemPackages = EnumerateAppXPackages();
+    // DEPRECATED: Registry-based system AppX enumeration
+    // std::vector<AppXPackage> systemPackages = EnumerateAppXPackages();
+    
+    // NEW: WinRT-based system-wide modern app enumeration
+    std::vector<ModernAppPackage> systemPackages = EnumerateAllModernAppPackages();
     if (!systemPackages.empty()) {
         userAppXPackages[L"SYSTEM"] = systemPackages;
     }
@@ -107,10 +114,10 @@ std::string GenerateJSON()
 
         out << "      ]";
         
-        // Add AppX packages if available for this user
+        // Add Modern AppX packages if available for this user
         if (userAppXPackages.find(username) != userAppXPackages.end()) {
             out << ",\n";
-            out << "      \"appxPackages\": [\n";
+            out << "      \"modernAppPackages\": [\n";
             
             const auto& packages = userAppXPackages[username];
             for (size_t i = 0; i < packages.size(); i++)
@@ -120,10 +127,27 @@ std::string GenerateJSON()
                 out << "          \"packageFamilyName\": " << JsonEscape(packages[i].packageFamilyName) << ",\n";
                 out << "          \"displayName\": " << JsonEscape(packages[i].displayName) << ",\n";
                 out << "          \"publisher\": " << JsonEscape(packages[i].publisher) << ",\n";
+                out << "          \"publisherId\": " << JsonEscape(packages[i].publisherId) << ",\n";
+                out << "          \"publisherDisplayName\": " << JsonEscape(packages[i].publisherDisplayName) << ",\n";
                 out << "          \"version\": " << JsonEscape(packages[i].version) << ",\n";
                 out << "          \"architecture\": " << JsonEscape(packages[i].architecture) << ",\n";
                 out << "          \"installLocation\": " << JsonEscape(packages[i].installLocation) << ",\n";
-                out << "          \"isFramework\": " << (packages[i].isFramework ? "true" : "false") << "\n";
+                out << "          \"resourceId\": " << JsonEscape(packages[i].resourceId) << ",\n";
+                out << "          \"description\": " << JsonEscape(packages[i].description) << ",\n";
+                out << "          \"logo\": " << JsonEscape(packages[i].logo) << ",\n";
+                out << "          \"isFramework\": " << (packages[i].isFramework ? "true" : "false") << ",\n";
+                out << "          \"isBundle\": " << (packages[i].isBundle ? "true" : "false") << ",\n";
+                out << "          \"isResourcePackage\": " << (packages[i].isResourcePackage ? "true" : "false") << ",\n";
+                out << "          \"isDevelopmentMode\": " << (packages[i].isDevelopmentMode ? "true" : "false") << ",\n";
+                out << "          \"users\": [";
+                
+                for (size_t j = 0; j < packages[i].users.size(); j++)
+                {
+                    out << JsonEscape(packages[i].users[j]);
+                    if (j + 1 < packages[i].users.size()) out << ", ";
+                }
+                
+                out << "]\n";
                 out << "        }";
                 if (i + 1 < packages.size()) out << ",";
                 out << "\n";

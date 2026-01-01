@@ -45,6 +45,9 @@
     <ClCompile Include="src\WindowsEnum\RegistryHiveLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\WindowsEnum\WinAppXPackages.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h">
@@ -77,10 +80,15 @@
     <ClInclude Include="src\WindowsEnum\RegistryHiveLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\WindowsEnum\WinAppXPackages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />
     <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
+    <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
+    <None Include="WINRT_SETUP_INSTRUCTIONS.md" />
   </ItemGroup>
 </Project>

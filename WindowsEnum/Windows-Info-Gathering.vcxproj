@@ -105,6 +105,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <DelayLoadDLLs>api-ms-win-core-winrt-l1-1-0.dll;api-ms-win-core-winrt-error-l1-1-1.dll</DelayLoadDLLs>
+      <MinimumRequiredVersion>6.1</MinimumRequiredVersion>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -125,6 +127,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <DelayLoadDLLs>api-ms-win-core-winrt-l1-1-0.dll;api-ms-win-core-winrt-error-l1-1-1.dll</DelayLoadDLLs>
+      <MinimumRequiredVersion>6.1</MinimumRequiredVersion>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -141,6 +145,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <DelayLoadDLLs>api-ms-win-core-winrt-l1-1-0.dll;api-ms-win-core-winrt-error-l1-1-1.dll</DelayLoadDLLs>
+      <MinimumRequiredVersion>6.1</MinimumRequiredVersion>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -161,6 +167,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <DelayLoadDLLs>api-ms-win-core-winrt-l1-1-0.dll;api-ms-win-core-winrt-error-l1-1-1.dll</DelayLoadDLLs>
+      <MinimumRequiredVersion>6.1</MinimumRequiredVersion>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -174,6 +182,7 @@
     <ClCompile Include="src\WindowsEnum\UserProfiles.cpp" />
     <ClCompile Include="src\WindowsEnum\VSSSnapshot.cpp" />
     <ClCompile Include="src\WindowsEnum\Win32Apps.cpp" />
+    <ClCompile Include="src\WindowsEnum\WinAppXPackages.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h" />
@@ -185,12 +194,15 @@
     <ClInclude Include="src\WindowsEnum\UserProfiles.h" />
     <ClInclude Include="src\WindowsEnum\VSSSnapshot.h" />
     <ClInclude Include="src\WindowsEnum\Win32Apps.h" />
+    <ClInclude Include="src\WindowsEnum\WinAppXPackages.h" />
     <ClInclude Include="src\WindowsEnum\WindowsEnum.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
     <None Include="README_RUN_AS_SYSTEM.md" />
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
     <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
+    <None Include="WINRT_SETUP_INSTRUCTIONS.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
