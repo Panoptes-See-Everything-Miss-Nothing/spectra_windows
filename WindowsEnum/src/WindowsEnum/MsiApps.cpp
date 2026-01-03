@@ -1,8 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include "MsiApps.h"
-#include <Msi.h>
-#include <sstream>
-#include <array>
+
 
 // Link MSI library
 #pragma comment(lib, "Msi.lib")

@@ -1,10 +1,8 @@
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <windows.h>
 #include <Msi.h>
-#include <string>
-#include <vector>
 #include "../Utils/Utils.h"
 
 // MSI-installed application information
