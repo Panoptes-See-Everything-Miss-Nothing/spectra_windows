@@ -41,6 +41,9 @@ bool IsSystemAccount(const std::wstring& username);
 // Helper: Translate Windows error code to message
 std::string GetWindowsErrorMessage(LONG errorCode);
 
+// Generate JSON inventory of all system information
+std::string GenerateJSON();
+
 // Directory Security Validation Functions
 
 // Check if a path is a directory (not a file)
