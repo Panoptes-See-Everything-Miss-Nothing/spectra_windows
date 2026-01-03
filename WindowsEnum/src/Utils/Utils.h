@@ -63,3 +63,6 @@ PSID GetCurrentUserSid();
 
 // Free a SID allocated by GetCurrentUserSid
 void FreeUserSid(PSID pSid);
+
+// Architecture detection: Check if running 32-bit app on 64-bit Windows
+bool IsRunningUnderWow64();

@@ -48,6 +48,9 @@
     <ClCompile Include="src\WindowsEnum\WinAppXPackages.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\WindowsEnum\MsiApps.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h">
@@ -83,6 +86,9 @@
     <ClInclude Include="src\WindowsEnum\WinAppXPackages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\WindowsEnum\MsiApps.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />
@@ -90,5 +96,6 @@
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
     <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
     <None Include="WINRT_SETUP_INSTRUCTIONS.md" />
+    <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
 </Project>

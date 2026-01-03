@@ -204,6 +204,7 @@
     <ClInclude Include="src\WindowsEnum\WindowsEnum.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
     <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
     <None Include="README_RUN_AS_SYSTEM.md" />
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />

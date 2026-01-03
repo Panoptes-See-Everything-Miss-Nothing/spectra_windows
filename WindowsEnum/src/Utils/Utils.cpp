@@ -238,6 +238,29 @@ void FreeUserSid(PSID pSid)
         LocalFree(pSid);
 }
 
+bool IsRunningUnderWow64()
+{
+#ifdef _WIN64
+    // 64-bit build always returns false (can't be WOW64)
+    return false;
+#else
+    // 32-bit build: check if running under WOW64
+    typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS)(HANDLE, PBOOL);
+    LPFN_ISWOW64PROCESS fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+        GetModuleHandleW(L"kernel32"), "IsWow64Process");
+    
+    if (fnIsWow64Process != nullptr)
+    {
+        BOOL isWow64 = FALSE;
+        if (fnIsWow64Process(GetCurrentProcess(), &isWow64))
+        {
+            return isWow64 == TRUE;
+        }
+    }
+    return false;
+#endif
+}
+
 bool IsDirectoryOwnedByTrustedUser(const std::wstring& path)
 {
     PSID pOwnerSid = nullptr;
