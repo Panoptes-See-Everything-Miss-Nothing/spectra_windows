@@ -1,0 +1,75 @@
+# Visual Studio temporary files, build results, etc
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build directories
+Debug/
+Release/
+x64/
+x86/
+build/
+bin/
+obj/
+
+# Visual Studio Code workspace settings
+.vscode/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# CMake generated files (if used)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# NuGet packages
+*.nupkg
+packages/
+
+# Log files
+*.log
+
+# Backup files
+*.bak
+*.old
+*.orig
+
+# Temporary files
+*.tmp
+*.temp
+
+# JetBrains Rider / ReSharper caches (if ever used)
+.idea/
+*.sln.iml
+
+# Others
+*.ipch
+*.opensdf
+*.sdf
+*.cache
+.VC.db
+.MAIN.ipch
+*.ipch
+*.db
+.vs/
+
+# Visual Studio
+.vs/
+
+# Visual Studio junk
+.vs/
+*.VC.db
+*.ipch
+*.pdb
+*.obj
+bin/
+intermediates/
+
+
