@@ -1,6 +1,6 @@
 #include "Utils.h"
-#include "../WindowsEnum/WindowsEnum.h"
-#include "../WindowsEnum/WinAppXPackages.h"
+#include "../WindowsEnum.h"
+#include "../WinAppXPackages.h"
 #include <aclapi.h>
 #include <sddl.h>
 #include <unordered_map>

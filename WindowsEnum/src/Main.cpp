@@ -1,11 +1,75 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "Utils/Utils.h"
+#include "Service/ServiceMain.h"
+#include "Service/ServiceInstaller.h"
+#include "Service/ServiceConfig.h"
+#include <iostream>
 
 #pragma comment(lib, "Ws2_32.lib")
-#pragma comment(lib, "advapi32.lib")  // For registry and privilege APIs (lowercase)
+#pragma comment(lib, "advapi32.lib")
 
-int main()
+// Console mode: Run data collection once and exit
+int RunConsoleMode()
+{
+    LogError("[+] Running in CONSOLE mode");
+    LogError("[!] IMPORTANT: This application must run as SYSTEM account to enumerate all user profiles.");
+    LogError("[!] Running as Administrator is NOT sufficient.");
+    LogError("[!] Use PsExec or Task Scheduler to run as SYSTEM:");
+    LogError("[!]   psexec -s -i Spectra.exe /console");
+    
+    std::string jsonData = GenerateJSON();
+    WriteJSONToFile(jsonData);
+    
+    LogError("[+] Console mode execution completed");
+    return 0;
+}
+
+// Test mode: Run data collection once and display summary
+int RunTestMode()
+{
+    LogError("[+] Running in TEST mode");
+    LogError("[+] Performing single data collection for validation...");
+    
+    std::string jsonData = GenerateJSON();
+    
+    std::cout << "\n==========================================================\n";
+    std::cout << "DATA COLLECTION TEST COMPLETED\n";
+    std::cout << "==========================================================\n";
+    std::cout << "JSON Output Size: " << jsonData.size() << " bytes\n";
+    std::cout << "Output Location: Current Directory\n";
+    std::cout << "\nTo install as service, run: Spectra.exe /install\n";
+    std::cout << "==========================================================\n";
+    
+    WriteJSONToFile(jsonData);
+    return 0;
+}
+
+// Display usage information
+void ShowUsage()
+{
+    std::wcout << L"\n==========================================================\n";
+    std::wcout << ServiceConfig::SERVICE_DISPLAY_NAME << L" v" << ServiceConfig::VERSION << L"\n";
+    std::wcout << L"==========================================================\n\n";
+    std::wcout << L"USAGE:\n";
+    std::wcout << L"  Spectra.exe /install    - Install Windows service\n";
+    std::wcout << L"  Spectra.exe /uninstall  - Uninstall Windows service\n";
+    std::wcout << L"  Spectra.exe /console    - Run in console mode (one-time collection)\n";
+    std::wcout << L"  Spectra.exe /test       - Test data collection\n";
+    std::wcout << L"  (no arguments)          - Launched by Service Control Manager\n\n";
+    std::wcout << L"SECURITY REQUIREMENTS:\n";
+    std::wcout << L"  - Requires Administrator privileges for installation\n";
+    std::wcout << L"  - Service runs as LocalSystem (NT AUTHORITY\\SYSTEM)\n";
+    std::wcout << L"  - Requires SE_BACKUP and SE_RESTORE privileges\n\n";
+    std::wcout << L"EXAMPLES:\n";
+    std::wcout << L"  Install:   Spectra.exe /install\n";
+    std::wcout << L"  Start:     sc start " << ServiceConfig::SERVICE_NAME << L"\n";
+    std::wcout << L"  Stop:      sc stop " << ServiceConfig::SERVICE_NAME << L"\n";
+    std::wcout << L"  Uninstall: Spectra.exe /uninstall\n\n";
+    std::wcout << L"==========================================================\n";
+}
+
+int wmain(int argc, wchar_t* argv[])
 {
 #ifndef _WIN64
     // 32-bit build: Block execution on 64-bit Windows
@@ -17,7 +81,7 @@ int main()
             L"Architecture Mismatch",
             MB_OK | MB_ICONERROR);
         LogError("[-] FATAL: 32-bit application attempted to run on 64-bit Windows. Exiting.");
-        return 1;  // Exit with error code
+        return 1;
     }
 #endif
 
@@ -52,14 +116,45 @@ int main()
     LogError("[+] Running on Windows " + std::to_string(osvi.dwMajorVersion) + "." + 
              std::to_string(osvi.dwMinorVersion) + "." + std::to_string(osvi.dwBuildNumber));
 
-    LogError("[!] IMPORTANT: This application must run as SYSTEM account to enumerate all user profiles.");
-    LogError("[!] Running as Administrator is NOT sufficient.");
-    LogError("[!] Use PsExec or Task Scheduler to run as SYSTEM:");
-    LogError("[!]   psexec -s -i Windows-Info-Gathering.exe");
-    LogError("[!]   OR create a scheduled task with 'Run whether user is logged on or not' + 'Run with highest privileges'");
-    
-    std::string jsonData = GenerateJSON();
-    WriteJSONToFile(jsonData); 
-    return 0;
+    // Parse command line arguments
+    if (argc > 1)
+    {
+        std::wstring arg = argv[1];
+        
+        // Convert to lowercase for comparison
+        std::transform(arg.begin(), arg.end(), arg.begin(), ::towlower);
+        
+        if (arg == L"/install")
+        {
+            return ServiceInstaller::InstallService() ? 0 : 1;
+        }
+        else if (arg == L"/uninstall")
+        {
+            return ServiceInstaller::UninstallService() ? 0 : 1;
+        }
+        else if (arg == L"/console")
+        {
+            return RunConsoleMode();
+        }
+        else if (arg == L"/test")
+        {
+            return RunTestMode();
+        }
+        else if (arg == L"/?" || arg == L"-?" || arg == L"--help" || arg == L"/help")
+        {
+            ShowUsage();
+            return 0;
+        }
+        else
+        {
+            std::wcerr << L"Unknown argument: " << argv[1] << L"\n";
+            ShowUsage();
+            return 1;
+        }
+    }
+
+    // No arguments: Assume we're being launched by SCM as a service
+    LogError("[+] No command-line arguments - assuming Service Control Manager launch");
+    return ServiceMain::RunService() ? 0 : 1;
 }
 

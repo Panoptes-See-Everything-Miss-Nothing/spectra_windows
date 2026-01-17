@@ -21,34 +21,43 @@
     <ClCompile Include="src\Utils\Utils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\PrivMgmt.cpp">
+    <ClCompile Include="src\AppXPackages.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\MachineInfo.cpp">
+    <ClCompile Include="src\MachineInfo.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\RegistryUtils.cpp">
+    <ClCompile Include="src\MsiApps.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\UserProfiles.cpp">
+    <ClCompile Include="src\PrivMgmt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\Win32Apps.cpp">
+    <ClCompile Include="src\RegistryHiveLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\AppXPackages.cpp">
+    <ClCompile Include="src\RegistryUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\VSSSnapshot.cpp">
+    <ClCompile Include="src\UserProfiles.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\RegistryHiveLoader.cpp">
+    <ClCompile Include="src\VSSSnapshot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\WinAppXPackages.cpp">
+    <ClCompile Include="src\Win32Apps.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\WindowsEnum\MsiApps.cpp">
+    <ClCompile Include="src\WinAppXPackages.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Service\ServiceInstaller.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Service\ServiceMain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Service\ServiceTamperProtection.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -56,37 +65,49 @@
     <ClInclude Include="src\Utils\Utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\PrivMgmt.h">
+    <ClInclude Include="src\AppXPackages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\MachineInfo.h">
+    <ClInclude Include="src\MachineInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\RegistryUtils.h">
+    <ClInclude Include="src\MsiApps.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\UserProfiles.h">
+    <ClInclude Include="src\PrivMgmt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\Win32Apps.h">
+    <ClInclude Include="src\RegistryHiveLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\AppXPackages.h">
+    <ClInclude Include="src\RegistryUtils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\WindowsEnum.h">
+    <ClInclude Include="src\UserProfiles.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\VSSSnapshot.h">
+    <ClInclude Include="src\VSSSnapshot.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\RegistryHiveLoader.h">
+    <ClInclude Include="src\Win32Apps.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\WinAppXPackages.h">
+    <ClInclude Include="src\WinAppXPackages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\WindowsEnum\MsiApps.h">
+    <ClInclude Include="src\WindowsEnum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Service\ServiceConfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Service\ServiceInstaller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Service\ServiceMain.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Service\ServiceTamperProtection.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
