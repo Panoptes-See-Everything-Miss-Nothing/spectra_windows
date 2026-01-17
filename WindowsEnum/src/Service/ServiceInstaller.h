@@ -15,6 +15,9 @@ public:
     static bool UninstallService();
     
 private:
+    // Copy executable to Program Files installation directory
+    static std::wstring CopyExecutableToInstallLocation();
+    
     // Get the quoted executable path (protects against unquoted service path attacks)
     static std::wstring GetQuotedExecutablePath();
     

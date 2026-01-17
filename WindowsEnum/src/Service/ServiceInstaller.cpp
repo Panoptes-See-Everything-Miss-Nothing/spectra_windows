@@ -13,7 +13,18 @@ bool ServiceInstaller::InstallService()
     LogError("[+] Installing " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
     LogError("[+] ==========================================================");
 
-    // Create secure directory structure first
+    // Step 1: Copy executable to Program Files
+    std::wstring installedExePath = CopyExecutableToInstallLocation();
+    if (installedExePath.empty())
+    {
+        LogError("[-] Failed to copy executable to installation directory");
+        LogError("[-] Installation aborted");
+        return false;
+    }
+
+    LogError("[+] Executable installed to: " + WideToUtf8(installedExePath));
+
+    // Step 2: Create secure directory structure
     if (!CreateSecureDirectories())
     {
         LogError("[-] Failed to create secure directories");
@@ -21,7 +32,7 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
-    // Get SCM handle
+    // Step 3: Get SCM handle
     SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCManager)
     {
@@ -31,29 +42,22 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
-    // Get quoted executable path (CRITICAL: prevents unquoted service path attacks)
-    std::wstring quotedPath = GetQuotedExecutablePath();
-    if (quotedPath.empty())
-    {
-        LogError("[-] Failed to get executable path");
-        CloseServiceHandle(hSCManager);
-        return false;
-    }
+    // Step 4: Create quoted path for installed executable
+    std::wstring servicePath = L"\"" + installedExePath + L"\"";
+    LogError("[+] Service executable: " + WideToUtf8(servicePath));
 
-    LogError("[+] Service executable: " + WideToUtf8(quotedPath));
-
-    // Check if service already exists
+    // Step 5: Check if service already exists
     SC_HANDLE hExistingService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, SERVICE_QUERY_STATUS);
     if (hExistingService)
     {
         LogError("[!] Service already exists");
         CloseServiceHandle(hExistingService);
         CloseServiceHandle(hSCManager);
-        LogError("[!] To reinstall, first run: Spectra.exe /uninstall");
+        LogError("[!] To reinstall, first run: Panoptes-Spectra.exe /uninstall");
         return false;
     }
 
-    // Create the service
+    // Step 6: Create the service
     SC_HANDLE hService = CreateServiceW(
         hSCManager,
         ServiceConfig::SERVICE_NAME,
@@ -62,7 +66,7 @@ bool ServiceInstaller::InstallService()
         SERVICE_WIN32_OWN_PROCESS,
         ServiceConfig::SERVICE_START_TYPE,
         SERVICE_ERROR_NORMAL,
-        quotedPath.c_str(),
+        servicePath.c_str(),
         nullptr,                              // No load order group
         nullptr,                              // No tag identifier
         ServiceConfig::SERVICE_DEPENDENCIES,  // No dependencies
@@ -81,7 +85,7 @@ bool ServiceInstaller::InstallService()
 
     LogError("[+] Service created successfully");
 
-    // Set service description
+    // Step 7: Set service description
     SERVICE_DESCRIPTIONW sd = {};
     sd.lpDescription = const_cast<LPWSTR>(ServiceConfig::SERVICE_DESCRIPTION);
     if (!ChangeServiceConfig2W(hService, SERVICE_CONFIG_DESCRIPTION, &sd))
@@ -89,35 +93,57 @@ bool ServiceInstaller::InstallService()
         LogError("[-] WARNING: Failed to set service description");
     }
 
-    // Apply service hardening
+    // Step 8: Apply service hardening
     if (!ApplyServiceHardening(hService))
     {
         LogError("[-] WARNING: Failed to apply full service hardening");
     }
 
-    // Apply tamper protection (restrict who can control the service)
+    // Step 9: Apply tamper protection (restrict who can control the service)
     if (!ServiceTamperProtection::ApplyTamperProtectionDACL(hService))
     {
         LogError("[-] WARNING: Failed to apply tamper protection");
         LogError("[!] Service may be vulnerable to unauthorized modification");
     }
 
-    // Verify installation
+    // Step 10: Verify installation
     if (!VerifyInstallation(hService))
     {
         LogError("[-] WARNING: Installation verification failed");
+    }
+
+    // Step 11: Start the service automatically
+    LogError("[+] Starting service...");
+    if (!StartServiceW(hService, 0, nullptr))
+    {
+        DWORD error = GetLastError();
+        LogError("[-] WARNING: Failed to start service automatically, error: " + std::to_string(error));
+        LogError("[!] You can start it manually with: sc start " + WideToUtf8(ServiceConfig::SERVICE_NAME));
+    }
+    else
+    {
+        LogError("[+] Service started successfully!");
+        
+        // Wait a moment for service to fully start
+        Sleep(2000);
+        
+        SERVICE_STATUS ss = {};
+        if (QueryServiceStatus(hService, &ss) && ss.dwCurrentState == SERVICE_RUNNING)
+        {
+            LogError("[+] Service is now RUNNING");
+        }
     }
 
     CloseServiceHandle(hService);
     CloseServiceHandle(hSCManager);
 
     LogError("[+] ==========================================================");
-    LogError("[+] Service installed successfully!");
+    LogError("[+] Installation completed successfully!");
     LogError("[+] Service Name: " + WideToUtf8(ServiceConfig::SERVICE_NAME));
     LogError("[+] Display Name: " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
+    LogError("[+] Installed to: " + WideToUtf8(installedExePath));
+    LogError("[+] Output directory: " + WideToUtf8(ServiceConfig::OUTPUT_DIRECTORY));
     LogError("[+] ==========================================================");
-    LogError("[!] To start the service, run: sc start " + WideToUtf8(ServiceConfig::SERVICE_NAME));
-    LogError("[!] Or use: net start \"" + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME) + "\"");
 
     return true;
 }
@@ -234,6 +260,47 @@ std::wstring ServiceInstaller::GetQuotedExecutablePath()
     }
 
     return quotedPath;
+}
+
+// Copy executable to Program Files installation directory
+std::wstring ServiceInstaller::CopyExecutableToInstallLocation()
+{
+    // Get current executable path
+    WCHAR currentExePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, currentExePath, MAX_PATH) == 0)
+    {
+        LogError("[-] Failed to get current executable path");
+        return L"";
+    }
+
+    // Define installation directory
+    std::wstring installDir = L"C:\\Program Files\\Panoptes\\Spectra";
+    
+    // Create installation directory
+    int result = SHCreateDirectoryExW(nullptr, installDir.c_str(), nullptr);
+    if (result != ERROR_SUCCESS && result != ERROR_ALREADY_EXISTS)
+    {
+        LogError("[-] Failed to create installation directory: " + WideToUtf8(installDir));
+        return L"";
+    }
+
+    LogError("[+] Installation directory: " + WideToUtf8(installDir));
+
+    // Define target path
+    std::wstring targetPath = installDir + L"\\Panoptes-Spectra.exe";
+
+    // Copy executable
+    if (!CopyFileW(currentExePath, targetPath.c_str(), FALSE))
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to copy executable, error: " + std::to_string(error));
+        LogError("[-] Source: " + WideToUtf8(currentExePath));
+        LogError("[-] Target: " + WideToUtf8(targetPath));
+        return L"";
+    }
+
+    LogError("[+] Executable copied successfully");
+    return targetPath;
 }
 
 // Apply service hardening (SID restriction, required privileges, failure actions)

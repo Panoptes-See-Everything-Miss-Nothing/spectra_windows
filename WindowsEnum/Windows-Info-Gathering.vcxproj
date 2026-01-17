@@ -222,7 +222,9 @@
     <None Include="IMPLEMENTATION_SUMMARY.md" />
     <None Include="MACHINE_ID_IMPLEMENTATION.md" />
     <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
+    <None Include="QUICKSTART.md" />
     <None Include="README_RUN_AS_SYSTEM.md" />
+    <None Include="REBUILD_INSTRUCTIONS.md" />
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
     <None Include="VSS_IMPLEMENTATION_SUMMARY.md" />
     <None Include="WINRT_SETUP_INSTRUCTIONS.md" />

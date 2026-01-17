@@ -129,5 +129,7 @@
     <None Include=".github\copilot-instructions.md" />
     <None Include="MACHINE_ID_IMPLEMENTATION.md" />
     <None Include="IMPLEMENTATION_SUMMARY.md" />
+    <None Include="QUICKSTART.md" />
+    <None Include="REBUILD_INSTRUCTIONS.md" />
   </ItemGroup>
 </Project>
