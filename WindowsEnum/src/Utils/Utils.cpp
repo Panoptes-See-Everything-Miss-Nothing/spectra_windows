@@ -21,7 +21,17 @@ void LogError(const std::string& message)
     struct tm timeinfo;
     // Lock for thread safety
     std::lock_guard<std::mutex> lock(g_logMutex);
-    fs::path logPath = fs::current_path() / "spectra_log.txt";
+    
+    // Use proper log directory when running as service, fallback to current directory for console mode
+    std::wstring logDir = ServiceConfig::LOG_DIRECTORY;
+    DWORD attribs = GetFileAttributesW(logDir.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        // Log directory doesn't exist, use current directory (console mode)
+        logDir = fs::current_path().wstring();
+    }
+    
+    fs::path logPath = fs::path(logDir) / "spectra_log.txt";
     
     try {
         std::ofstream logFile(logPath, std::ios::app);
