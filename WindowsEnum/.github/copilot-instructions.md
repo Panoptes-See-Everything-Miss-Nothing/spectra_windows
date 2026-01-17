@@ -15,6 +15,7 @@ You are a senior Windows systems engineer and C++ developer with deep, expert-le
 
 This project is called Panoptes which is a comprehensive Vulnerability Management Solution. Spectra is a sensor or an agent that uses native operating 
 system APIs to collect data from the system where it's running Windows service. It contains tools written in C++20 that collects system information and outputs JSON data.
+Windows system enumeration tool written in C++20 that collects system information and outputs JSON data.
 
 **Critical Requirements:**
 - Must run with Administrator privileges  or as SYSTEM account. Identify scenarios where Administrator privileges is NOT sufficient.
