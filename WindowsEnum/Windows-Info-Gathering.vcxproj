@@ -181,6 +181,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp" />
+    <ClCompile Include="src\Service\MachineId.cpp" />
+    <ClCompile Include="src\Service\ServiceConfig.cpp" />
     <ClCompile Include="src\Utils\Utils.cpp" />
     <ClCompile Include="src\AppXPackages.cpp" />
     <ClCompile Include="src\MachineInfo.cpp" />
@@ -197,6 +199,7 @@
     <ClCompile Include="src\Service\ServiceTamperProtection.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Service\MachineId.h" />
     <ClInclude Include="src\Utils\Utils.h" />
     <ClInclude Include="src\AppXPackages.h" />
     <ClInclude Include="src\MachineInfo.h" />
@@ -216,6 +219,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
+    <None Include="IMPLEMENTATION_SUMMARY.md" />
+    <None Include="MACHINE_ID_IMPLEMENTATION.md" />
     <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
     <None Include="README_RUN_AS_SYSTEM.md" />
     <None Include="SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />

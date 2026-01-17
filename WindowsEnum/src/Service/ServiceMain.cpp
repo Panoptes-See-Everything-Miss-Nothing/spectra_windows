@@ -126,8 +126,12 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 // Service worker thread
 DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
 {
+    // Get dynamic collection interval from registry
+    DWORD intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
+    DWORD intervalMs = intervalSeconds * 1000;
+    
     LogError("[+] Service worker thread started");
-    LogError("[+] Data collection interval: " + std::to_string(ServiceConfig::COLLECTION_INTERVAL_MS / 1000) + " seconds");
+    LogError("[+] Data collection interval: " + std::to_string(intervalSeconds) + " seconds");
 
     // Perform initial data collection
     LogError("[+] Performing initial data collection...");
@@ -137,7 +141,7 @@ DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
     while (true)
     {
         // Wait for stop event or timeout
-        DWORD waitResult = WaitForSingleObject(g_hStopEvent, ServiceConfig::COLLECTION_INTERVAL_MS);
+        DWORD waitResult = WaitForSingleObject(g_hStopEvent, intervalMs);
 
         if (waitResult == WAIT_OBJECT_0)
         {
@@ -147,6 +151,10 @@ DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
         }
         else if (waitResult == WAIT_TIMEOUT)
         {
+            // Reload configuration on each iteration (allows runtime config changes)
+            intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
+            intervalMs = intervalSeconds * 1000;
+            
             // Perform periodic data collection
             LogError("[+] Performing scheduled data collection...");
             PerformDataCollection();
@@ -207,6 +215,9 @@ void ServiceMain::PerformDataCollection()
         // Generate JSON inventory
         std::string jsonData = GenerateJSON();
 
+        // Get output directory from configuration
+        std::wstring outputDir = ServiceConfig::GetOutputDirectory();
+
         // Create timestamped filename
         auto now = std::chrono::system_clock::now();
         auto time = std::chrono::system_clock::to_time_t(now);
@@ -215,7 +226,7 @@ void ServiceMain::PerformDataCollection()
         if (localtime_s(&timeinfo, &time) == 0)
         {
             std::wstringstream filename;
-            filename << ServiceConfig::OUTPUT_DIRECTORY << L"\\inventory_"
+            filename << outputDir << L"\\inventory_"
                     << std::put_time(&timeinfo, L"%Y%m%d_%H%M%S") << L".json";
 
             // Write to timestamped file
@@ -232,7 +243,7 @@ void ServiceMain::PerformDataCollection()
             }
 
             // Also write to "latest" file for easy access
-            std::wstring latestFile = std::wstring(ServiceConfig::OUTPUT_DIRECTORY) + L"\\inventory_latest.json";
+            std::wstring latestFile = outputDir + L"\\inventory_latest.json";
             std::ofstream latestOut(latestFile, std::ios::out | std::ios::trunc);
             if (latestOut.is_open())
             {

@@ -1,6 +1,8 @@
 #include "Utils.h"
 #include "../WindowsEnum.h"
 #include "../WinAppXPackages.h"
+#include "../Service/MachineId.h"
+#include "../Service/ServiceConfig.h"
 #include <aclapi.h>
 #include <sddl.h>
 #include <unordered_map>
@@ -420,9 +422,32 @@ std::string GenerateJSON()
 
     svipAddresses = GetLocalIPAddresses();
 
+    // Get ISO 8601 timestamp for collection
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    struct tm timeinfo = {};
+    std::string timestamp;
+    
+    if (localtime_s(&timeinfo, &time) == 0)
+    {
+        std::ostringstream timestampStream;
+        timestampStream << std::put_time(&timeinfo, "%Y-%m-%dT%H:%M:%S");
+        timestamp = timestampStream.str();
+    }
+    else
+    {
+        timestamp = "UNKNOWN";
+    }
+
     // JSON Begin
     std::ostringstream out;
     out << "{\n";
+    
+    // Add Spectra Machine ID as the first field
+    out << "  \"spectraMachineId\": \"" << MachineId::GetMachineIdUtf8() << "\",\n";
+    out << "  \"collectionTimestamp\": \"" << timestamp << "\",\n";
+    out << "  \"agentVersion\": \"" << WideToUtf8(ServiceConfig::VERSION) << "\",\n";
+    
     out << "  \"machineNetBiosName\": " << JsonEscape(machineNames.netbiosName) << ",\n";
     out << "  \"machineDnsName\": " << JsonEscape(machineNames.dnsName) << ",\n";
     out << "  \"ipAddresses\": [\n";
