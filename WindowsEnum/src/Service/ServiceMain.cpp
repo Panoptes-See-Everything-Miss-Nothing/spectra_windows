@@ -5,8 +5,10 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <shlobj.h>
 
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
 
 // Static member initialization
 SERVICE_STATUS_HANDLE ServiceMain::g_hServiceStatusHandle = nullptr;
@@ -84,7 +86,7 @@ VOID WINAPI ServiceMain::ServiceMainEntry(DWORD argc, LPWSTR* argv)
 
     // Report that service is now running
     ReportServiceStatus(SERVICE_RUNNING, NO_ERROR, 0);
-    LogError("[+] Service is now RUNNING");
+    LogError("[+] Successfully reported the service status that it is now RUNNING");
 }
 
 // Service control handler
@@ -126,12 +128,29 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 // Service worker thread
 DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
 {
+    LogError("[+] ========== SERVICE WORKER THREAD STARTED ==========");
+    
     // Get dynamic collection interval from registry
     DWORD intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
     DWORD intervalMs = intervalSeconds * 1000;
     
     LogError("[+] Service worker thread started");
     LogError("[+] Data collection interval: " + std::to_string(intervalSeconds) + " seconds");
+
+    // Ensure output directory exists
+    std::wstring outputDir = ServiceConfig::GetOutputDirectory();
+    DWORD attribs = GetFileAttributesW(outputDir.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        LogError("[!] WARNING: Output directory does not exist, creating: " + WideToUtf8(outputDir));
+        if (SHCreateDirectoryExW(nullptr, outputDir.c_str(), nullptr) != ERROR_SUCCESS)
+        {
+            LogError("[-] FATAL: Failed to create output directory!");
+            ReportServiceStatus(SERVICE_STOPPED, ERROR_PATH_NOT_FOUND, 0);
+            return 1;
+        }
+        LogError("[+] Output directory created successfully");
+    }
 
     // Perform initial data collection
     LogError("[+] Performing initial data collection...");

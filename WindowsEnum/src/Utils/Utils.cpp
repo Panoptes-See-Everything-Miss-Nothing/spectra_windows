@@ -27,8 +27,14 @@ void LogError(const std::string& message)
     DWORD attribs = GetFileAttributesW(logDir.c_str());
     if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
     {
-        // Log directory doesn't exist, use current directory (console mode)
-        logDir = fs::current_path().wstring();
+        // Log directory doesn't exist, try to use current directory (console mode)
+        try {
+            logDir = fs::current_path().wstring();
+        }
+        catch (...) {
+            // current_path() failed (service worker thread), use System32 as last resort
+            logDir = L"C:\\Windows\\System32";
+        }
     }
     
     fs::path logPath = fs::path(logDir) / "spectra_log.txt";
