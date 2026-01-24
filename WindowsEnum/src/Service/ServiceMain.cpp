@@ -128,70 +128,131 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 // Service worker thread
 DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
 {
-    LogError("[+] ========== SERVICE WORKER THREAD STARTED ==========");
-    
-    // Get dynamic collection interval from registry
-    DWORD intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
-    DWORD intervalMs = intervalSeconds * 1000;
-    
-    LogError("[+] Service worker thread started");
-    LogError("[+] Data collection interval: " + std::to_string(intervalSeconds) + " seconds");
-
-    // Ensure output directory exists
-    std::wstring outputDir = ServiceConfig::GetOutputDirectory();
-    DWORD attribs = GetFileAttributesW(outputDir.c_str());
-    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    // CRITICAL: Write to file IMMEDIATELY before any other code
+    // This bypasses LogError() to catch early crashes
     {
-        LogError("[!] WARNING: Output directory does not exist, creating: " + WideToUtf8(outputDir));
-        if (SHCreateDirectoryExW(nullptr, outputDir.c_str(), nullptr) != ERROR_SUCCESS)
+        std::ofstream crashLog("C:\\ProgramData\\Panoptes\\Spectra\\Logs\\worker_thread_start.txt", std::ios::app);
+        if (crashLog.is_open())
         {
-            LogError("[-] FATAL: Failed to create output directory!");
-            ReportServiceStatus(SERVICE_STOPPED, ERROR_PATH_NOT_FOUND, 0);
-            return 1;
-        }
-        LogError("[+] Output directory created successfully");
-    }
-
-    // Perform initial data collection
-    LogError("[+] Performing initial data collection...");
-    PerformDataCollection();
-
-    // Main service loop
-    while (true)
-    {
-        // Wait for stop event or timeout
-        DWORD waitResult = WaitForSingleObject(g_hStopEvent, intervalMs);
-
-        if (waitResult == WAIT_OBJECT_0)
-        {
-            // Stop event was signaled
-            LogError("[+] Worker thread received stop signal");
-            break;
-        }
-        else if (waitResult == WAIT_TIMEOUT)
-        {
-            // Reload configuration on each iteration (allows runtime config changes)
-            intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
-            intervalMs = intervalSeconds * 1000;
-            
-            // Perform periodic data collection
-            LogError("[+] Performing scheduled data collection...");
-            PerformDataCollection();
-        }
-        else
-        {
-            // Wait failed
-            LogError("[-] WaitForSingleObject failed in worker thread");
-            break;
+            auto now = std::chrono::system_clock::now();
+            auto time = std::chrono::system_clock::to_time_t(now);
+            struct tm timeinfo;
+            if (localtime_s(&timeinfo, &time) == 0)
+            {
+                crashLog << "[" << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S") << "] WORKER THREAD ENTRY POINT REACHED" << std::endl;
+            }
+            crashLog.close();
         }
     }
 
-    LogError("[+] Worker thread shutting down");
+    try
+    {
+        LogError("[+] ========== SERVICE WORKER THREAD STARTED ==========");
+        
+        // Get dynamic collection interval from registry
+        DWORD intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
+        DWORD intervalMs = intervalSeconds * 1000;
+        
+        LogError("[+] Service worker thread started");
+        LogError("[+] Data collection interval: " + std::to_string(intervalSeconds) + " seconds (" + 
+                 std::to_string(intervalSeconds / 3600) + " hours)");
 
-    // Report that service is stopped
-    ReportServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
+        // Ensure output directory exists
+        std::wstring outputDir = ServiceConfig::GetOutputDirectory();
+        DWORD attribs = GetFileAttributesW(outputDir.c_str());
+        if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            LogError("[!] WARNING: Output directory does not exist, creating: " + WideToUtf8(outputDir));
+            if (SHCreateDirectoryExW(nullptr, outputDir.c_str(), nullptr) != ERROR_SUCCESS)
+            {
+                LogError("[-] FATAL: Failed to create output directory!");
+                ReportServiceStatus(SERVICE_STOPPED, ERROR_PATH_NOT_FOUND, 0);
+                return 1;
+            }
+            LogError("[+] Output directory created successfully");
+        }
 
-    return 0;
+        // Perform initial data collection
+        LogError("[+] Performing initial data collection...");
+        PerformDataCollection();
+
+        // Main service loop
+        while (true)
+        {
+            // Wait for stop event or timeout
+            DWORD waitResult = WaitForSingleObject(g_hStopEvent, intervalMs);
+
+            if (waitResult == WAIT_OBJECT_0)
+            {
+                // Stop event was signaled
+                LogError("[+] Worker thread received stop signal");
+                break;
+            }
+            else if (waitResult == WAIT_TIMEOUT)
+            {
+                // Reload configuration on each iteration (allows runtime config changes)
+                intervalSeconds = ServiceConfig::GetCollectionIntervalSeconds();
+                intervalMs = intervalSeconds * 1000;
+                
+                // Perform periodic data collection
+                LogError("[+] Performing scheduled data collection...");
+                PerformDataCollection();
+            }
+            else
+            {
+                // Wait failed
+                LogError("[-] WaitForSingleObject failed in worker thread");
+                break;
+            }
+        }
+
+        LogError("[+] Worker thread shutting down");
+
+        // Report that service is stopped
+        ReportServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
+
+        return 0;
+    }
+    catch (const std::exception& ex)
+    {
+        // Log crash details to both files
+        std::ofstream crashLog("C:\\ProgramData\\Panoptes\\Spectra\\Logs\\worker_crash.txt", std::ios::app);
+        if (crashLog.is_open())
+        {
+            auto now = std::chrono::system_clock::now();
+            auto time = std::chrono::system_clock::to_time_t(now);
+            struct tm timeinfo;
+            if (localtime_s(&timeinfo, &time) == 0)
+            {
+                crashLog << "[" << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S") << "] EXCEPTION: " << ex.what() << std::endl;
+            }
+            crashLog.close();
+        }
+        
+        LogError("[-] FATAL: Worker thread crashed with exception: " + std::string(ex.what()));
+        ReportServiceStatus(SERVICE_STOPPED, ERROR_EXCEPTION_IN_SERVICE, 0);
+        return 1;
+    }
+    catch (...)
+    {
+        // Log unknown crash
+        std::ofstream crashLog("C:\\ProgramData\\Panoptes\\Spectra\\Logs\\worker_crash.txt", std::ios::app);
+        if (crashLog.is_open())
+        {
+            auto now = std::chrono::system_clock::now();
+            auto time = std::chrono::system_clock::to_time_t(now);
+            struct tm timeinfo;
+            if (localtime_s(&timeinfo, &time) == 0)
+            {
+                crashLog << "[" << std::put_time(&timeinfo, "%Y-%m-%d %H:%M:%S") << "] UNKNOWN EXCEPTION" << std::endl;
+            }
+            crashLog.close();
+        }
+        
+        LogError("[-] FATAL: Worker thread crashed with unknown exception");
+        ReportServiceStatus(SERVICE_STOPPED, ERROR_EXCEPTION_IN_SERVICE, 0);
+        return 1;
+    }
 }
 
 // Report service status to SCM

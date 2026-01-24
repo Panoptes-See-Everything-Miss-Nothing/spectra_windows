@@ -31,7 +31,7 @@ namespace ServiceConfig
     constexpr const wchar_t* REG_OUTPUT_DIRECTORY = L"OutputDirectory";
     
     // Default values (used if registry not configured)
-    constexpr DWORD DEFAULT_COLLECTION_INTERVAL_SECONDS = 3600; // 1 hour
+    constexpr DWORD DEFAULT_COLLECTION_INTERVAL_SECONDS = 86400; // 24 hours (daily collection)
     constexpr const wchar_t* DEFAULT_OUTPUT_DIRECTORY = L"C:\\ProgramData\\Panoptes\\Spectra\\Output";
     constexpr const wchar_t* DEFAULT_LOG_DIRECTORY = L"C:\\ProgramData\\Panoptes\\Spectra\\Logs";
     constexpr const wchar_t* DEFAULT_CONFIG_DIRECTORY = L"C:\\ProgramData\\Panoptes\\Spectra\\Config";

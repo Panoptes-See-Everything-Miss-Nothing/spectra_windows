@@ -27,6 +27,9 @@ private:
     // Create secure directory structure
     static bool CreateSecureDirectories();
     
+    // Create registry configuration with default values
+    static bool CreateRegistryConfiguration();
+    
     // Verify service is installed correctly
     static bool VerifyInstallation(SC_HANDLE hService);
 };

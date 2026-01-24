@@ -5,9 +5,53 @@
 #include "Service/ServiceInstaller.h"
 #include "Service/ServiceConfig.h"
 #include <iostream>
+#include <shlobj.h>
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")
+
+static void WriteServiceProofOfLife(const wchar_t* fileName)
+{
+    std::wstring logDir = ServiceConfig::DEFAULT_LOG_DIRECTORY;
+    DWORD attribs = GetFileAttributesW(logDir.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        SHCreateDirectoryExW(nullptr, logDir.c_str(), nullptr);
+    }
+
+    std::wstring path = logDir + L"\\" + fileName;
+
+    HANDLE hFile = CreateFileW(
+        path.c_str(),
+        FILE_APPEND_DATA,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    SYSTEMTIME st = {};
+    GetLocalTime(&st);
+
+    wchar_t buffer[256] = {};
+    _snwprintf_s(
+        buffer,
+        _countof(buffer),
+        _TRUNCATE,
+        L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] wmain reached\r\n",
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+    DWORD bytesToWrite = static_cast<DWORD>(wcslen(buffer) * sizeof(wchar_t));
+    DWORD bytesWritten = 0;
+    WriteFile(hFile, buffer, bytesToWrite, &bytesWritten, nullptr);
+    CloseHandle(hFile);
+}
 
 // Console mode: Run data collection once and exit
 int RunConsoleMode()
@@ -71,6 +115,8 @@ void ShowUsage()
 
 int wmain(int argc, wchar_t* argv[])
 {
+    WriteServiceProofOfLife(L"service_wmain.txt");
+
 #ifndef _WIN64
     // 32-bit build: Block execution on 64-bit Windows
     if (IsRunningUnderWow64())

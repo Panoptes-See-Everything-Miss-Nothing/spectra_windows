@@ -64,19 +64,18 @@ namespace ServiceConfig
     {
         DWORD interval = ReadRegistryDword(REG_COLLECTION_INTERVAL, DEFAULT_COLLECTION_INTERVAL_SECONDS);
         
-        // Validate: minimum 60 seconds, maximum 24 hours
-        if (interval < 60)
+        // Validate: minimum 1 hour, maximum 7 days
+        // Note: Logging is deferred to avoid crashes during early initialization
+        if (interval < 3600)  // Minimum 1 hour
         {
-            LogError("[!] Warning: Collection interval too short (" + std::to_string(interval) + 
-                     "s), using minimum 60s");
-            return 60;
+            // Will be logged by caller if needed
+            return 3600;
         }
         
-        if (interval > 86400)
+        if (interval > 604800)  // Maximum 7 days
         {
-            LogError("[!] Warning: Collection interval too long (" + std::to_string(interval) + 
-                     "s), using maximum 86400s (24 hours)");
-            return 86400;
+            // Will be logged by caller if needed
+            return 604800;
         }
         
         return interval;

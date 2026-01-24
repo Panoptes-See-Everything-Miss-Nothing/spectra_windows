@@ -32,6 +32,14 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
+    // Step 2.5: Create registry configuration with default values
+    if (!CreateRegistryConfiguration())
+    {
+        LogError("[-] Failed to create registry configuration");
+        LogError("[-] Installation aborted");
+        return false;
+    }
+
     // Step 3: Get SCM handle
     SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCManager)
@@ -407,6 +415,111 @@ bool ServiceInstaller::CreateSecureDirectories()
         }
     }
 
+    return allSuccess;
+}
+
+// Create registry configuration with default values
+bool ServiceInstaller::CreateRegistryConfiguration()
+{
+    HKEY hKey = nullptr;
+    DWORD disposition = 0;
+    
+    // Create or open the registry key
+    LONG result = RegCreateKeyExW(
+        HKEY_LOCAL_MACHINE,
+        ServiceConfig::REGISTRY_KEY,
+        0,
+        nullptr,
+        REG_OPTION_NON_VOLATILE,
+        KEY_WRITE,
+        nullptr,
+        &hKey,
+        &disposition
+    );
+
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to create registry key, error: " + std::to_string(result));
+        return false;
+    }
+
+    if (disposition == REG_CREATED_NEW_KEY)
+    {
+        LogError("[+] Created registry key: HKLM\\" + WideToUtf8(ServiceConfig::REGISTRY_KEY));
+    }
+    else
+    {
+        LogError("[+] Registry key already exists: HKLM\\" + WideToUtf8(ServiceConfig::REGISTRY_KEY));
+    }
+
+    bool allSuccess = true;
+
+    // Set default collection interval (24 hours)
+    DWORD collectionInterval = ServiceConfig::DEFAULT_COLLECTION_INTERVAL_SECONDS;
+    result = RegSetValueExW(hKey, ServiceConfig::REG_COLLECTION_INTERVAL, 0, REG_DWORD, 
+                           (const BYTE*)&collectionInterval, sizeof(DWORD));
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to set CollectionIntervalSeconds, error: " + std::to_string(result));
+        allSuccess = false;
+    }
+    else
+    {
+        LogError("[+] Set CollectionIntervalSeconds: " + std::to_string(collectionInterval) + 
+                 " seconds (" + std::to_string(collectionInterval / 3600) + " hours)");
+    }
+
+    // Set output directory
+    std::wstring outputDir = ServiceConfig::DEFAULT_OUTPUT_DIRECTORY;
+    result = RegSetValueExW(hKey, ServiceConfig::REG_OUTPUT_DIRECTORY, 0, REG_SZ, 
+                           (const BYTE*)outputDir.c_str(), 
+                           (outputDir.length() + 1) * sizeof(wchar_t));
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to set OutputDirectory, error: " + std::to_string(result));
+        allSuccess = false;
+    }
+    else
+    {
+        LogError("[+] Set OutputDirectory: " + WideToUtf8(outputDir));
+    }
+
+    // Set detailed logging (disabled by default)
+    DWORD enableLogging = 0;
+    result = RegSetValueExW(hKey, ServiceConfig::REG_ENABLE_DETAILED_LOGGING, 0, REG_DWORD, 
+                           (const BYTE*)&enableLogging, sizeof(DWORD));
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to set EnableDetailedLogging, error: " + std::to_string(result));
+        allSuccess = false;
+    }
+    else
+    {
+        LogError("[+] Set EnableDetailedLogging: " + std::to_string(enableLogging));
+    }
+
+    // Set server URL (empty by default - for future use)
+    std::wstring serverUrl = L"";
+    result = RegSetValueExW(hKey, ServiceConfig::REG_SERVER_URL, 0, REG_SZ, 
+                           (const BYTE*)serverUrl.c_str(), 
+                           (serverUrl.length() + 1) * sizeof(wchar_t));
+    if (result != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to set ServerUrl, error: " + std::to_string(result));
+        allSuccess = false;
+    }
+    else
+    {
+        LogError("[+] Set ServerUrl: (empty - not configured)");
+    }
+
+    RegCloseKey(hKey);
+    
+    if (allSuccess)
+    {
+        LogError("[+] Registry configuration completed successfully");
+    }
+    
     return allSuccess;
 }
 
