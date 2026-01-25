@@ -10,7 +10,7 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")
 
-static void WriteServiceProofOfLife(const wchar_t* fileName)
+static std::wstring GetLogsDirectory()
 {
     std::wstring logDir = ServiceConfig::DEFAULT_LOG_DIRECTORY;
     DWORD attribs = GetFileAttributesW(logDir.c_str());
@@ -19,7 +19,18 @@ static void WriteServiceProofOfLife(const wchar_t* fileName)
         SHCreateDirectoryExW(nullptr, logDir.c_str(), nullptr);
     }
 
-    std::wstring path = logDir + L"\\" + fileName;
+    return logDir;
+}
+
+static void AppendTrace(const wchar_t* message)
+{
+    if (message == nullptr || *message == L'\0')
+    {
+        return;
+    }
+
+    std::wstring logDir = GetLogsDirectory();
+    std::wstring path = logDir + L"\\trace.txt";
 
     HANDLE hFile = CreateFileW(
         path.c_str(),
@@ -38,20 +49,65 @@ static void WriteServiceProofOfLife(const wchar_t* fileName)
     SYSTEMTIME st = {};
     GetLocalTime(&st);
 
-    wchar_t buffer[256] = {};
+    wchar_t buffer[768] = {};
     _snwprintf_s(
         buffer,
         _countof(buffer),
         _TRUNCATE,
-        L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] wmain reached\r\n",
+        L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] %s\r\n",
         st.wYear, st.wMonth, st.wDay,
-        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+        message);
 
     DWORD bytesToWrite = static_cast<DWORD>(wcslen(buffer) * sizeof(wchar_t));
     DWORD bytesWritten = 0;
     WriteFile(hFile, buffer, bytesToWrite, &bytesWritten, nullptr);
     CloseHandle(hFile);
 }
+
+// This runs before wmain (global initialization).
+// If this marker does not appear when SCM starts the service, the process is stuck before global init.
+struct PreWmainMarker
+{
+    PreWmainMarker()
+    {
+        std::wstring logDir = GetLogsDirectory();
+        std::wstring path = logDir + L"\\pre_wmain.txt";
+
+        HANDLE hFile = CreateFileW(
+            path.c_str(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+
+        if (hFile == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+
+        SYSTEMTIME st = {};
+        GetLocalTime(&st);
+
+        wchar_t buffer[256] = {};
+        _snwprintf_s(
+            buffer,
+            _countof(buffer),
+            _TRUNCATE,
+            L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] pre-wmain global init reached\r\n",
+            st.wYear, st.wMonth, st.wDay,
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+        DWORD bytesToWrite = static_cast<DWORD>(wcslen(buffer) * sizeof(wchar_t));
+        DWORD bytesWritten = 0;
+        WriteFile(hFile, buffer, bytesToWrite, &bytesWritten, nullptr);
+        CloseHandle(hFile);
+    }
+};
+
+static PreWmainMarker g_preWmainMarker;
 
 // Console mode: Run data collection once and exit
 int RunConsoleMode()
@@ -115,7 +171,14 @@ void ShowUsage()
 
 int wmain(int argc, wchar_t* argv[])
 {
-    WriteServiceProofOfLife(L"service_wmain.txt");
+    AppendTrace(L"wmain reached");
+    
+    // Log argc for debugging
+    {
+        wchar_t argcMsg[64];
+        _snwprintf_s(argcMsg, _countof(argcMsg), _TRUNCATE, L"argc=%d", argc);
+        AppendTrace(argcMsg);
+    }
 
 #ifndef _WIN64
     // 32-bit build: Block execution on 64-bit Windows
@@ -142,11 +205,13 @@ int wmain(int argc, wchar_t* argv[])
     if (RtlGetVersion)
     {
         RtlGetVersion(reinterpret_cast<PRTL_OSVERSIONINFOW>(&osvi));
+        AppendTrace(L"after_RtlGetVersion");
     }
     
     // Windows 10 is version 10.0
     if (osvi.dwMajorVersion < 10)
     {
+        AppendTrace(L"version_check_FAILED");
         std::wstringstream msg;
         msg << L"This application requires Windows 10 or later.\n\n"
             << L"Current Windows version: " << osvi.dwMajorVersion << L"." << osvi.dwMinorVersion << L"\n\n"
@@ -159,18 +224,45 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
     
+    AppendTrace(L"version_check_PASSED");
+    
     LogError("[+] Running on Windows " + std::to_string(osvi.dwMajorVersion) + "." + 
              std::to_string(osvi.dwMinorVersion) + "." + std::to_string(osvi.dwBuildNumber));
 
     // Parse command line arguments
     if (argc > 1)
     {
+        AppendTrace(L"argc_gt_1_branch");
+        
+        // Log what argv[1] actually is (with NULL check to prevent crash)
+        if (argv == nullptr || argv[1] == nullptr)
+        {
+            AppendTrace(L"argv1_NULL_BUG");
+            // argc > 1 but argv[1] is NULL - Windows SCM bug, treat as no arguments
+            AppendTrace(L"noargs_service_path");
+            LogError("[+] argv[1] is NULL - assuming Service Control Manager launch");
+            return ServiceMain::RunService() ? 0 : 1;
+        }
+        
+        {
+            wchar_t argvLogMsg[512];
+            _snwprintf_s(argvLogMsg, _countof(argvLogMsg), _TRUNCATE, L"argv_1=%s", argv[1]);
+            AppendTrace(argvLogMsg);
+        }
+        
         std::wstring arg = argv[1];
         
         // Convert to lowercase for comparison
         std::transform(arg.begin(), arg.end(), arg.begin(), ::towlower);
         
-        if (arg == L"/install")
+        // CRITICAL FIX: SCM may pass service name as argv[1]
+        // Check if it's the service name and treat as "no arguments"
+        if (arg == L"panoptesspectra" || arg == L"\"panoptesspectra\"")
+        {
+            AppendTrace(L"service_name_passed_falling_through");
+            // Fall through to service mode below
+        }
+        else if (arg == L"/install")
         {
             return ServiceInstaller::InstallService() ? 0 : 1;
         }
@@ -193,13 +285,19 @@ int wmain(int argc, wchar_t* argv[])
         }
         else
         {
+            // Unknown argument - log it and show usage
+            wchar_t unknownMsg[512];
+            _snwprintf_s(unknownMsg, _countof(unknownMsg), _TRUNCATE, L"unknown_arg=%s", arg.c_str());
+            AppendTrace(unknownMsg);
+            
             std::wcerr << L"Unknown argument: " << argv[1] << L"\n";
             ShowUsage();
             return 1;
         }
     }
 
-    // No arguments: Assume we're being launched by SCM as a service
+    // No arguments OR service name argument: Run as service
+    AppendTrace(L"noargs_service_path");
     LogError("[+] No command-line arguments - assuming Service Control Manager launch");
     return ServiceMain::RunService() ? 0 : 1;
 }

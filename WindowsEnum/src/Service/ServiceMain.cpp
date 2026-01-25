@@ -10,6 +10,50 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shell32.lib")
 
+static void WriteServiceMarkerFile(const wchar_t* fileName, const wchar_t* message)
+{
+    std::wstring logDir = ServiceConfig::DEFAULT_LOG_DIRECTORY;
+    DWORD attribs = GetFileAttributesW(logDir.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        SHCreateDirectoryExW(nullptr, logDir.c_str(), nullptr);
+    }
+
+    std::wstring path = logDir + L"\\" + fileName;
+
+    HANDLE hFile = CreateFileW(
+        path.c_str(),
+        FILE_APPEND_DATA,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    SYSTEMTIME st = {};
+    GetLocalTime(&st);
+
+    wchar_t buffer[512] = {};
+    _snwprintf_s(
+        buffer,
+        _countof(buffer),
+        _TRUNCATE,
+        L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] %s\r\n",
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+        (message != nullptr ? message : L"marker"));
+
+    DWORD bytesToWrite = static_cast<DWORD>(wcslen(buffer) * sizeof(wchar_t));
+    DWORD bytesWritten = 0;
+    WriteFile(hFile, buffer, bytesToWrite, &bytesWritten, nullptr);
+    CloseHandle(hFile);
+}
+
 // Static member initialization
 SERVICE_STATUS_HANDLE ServiceMain::g_hServiceStatusHandle = nullptr;
 SERVICE_STATUS ServiceMain::g_serviceStatus = {};
@@ -41,6 +85,7 @@ bool ServiceMain::RunService()
 // Service main entry point (called by SCM)
 VOID WINAPI ServiceMain::ServiceMainEntry(DWORD argc, LPWSTR* argv)
 {
+    WriteServiceMarkerFile(L"service_main_entry.txt", L"ServiceMainEntry reached");
     LogError("[+] ServiceMain entry point called by SCM");
 
     // Register the service control handler
@@ -52,6 +97,7 @@ VOID WINAPI ServiceMain::ServiceMainEntry(DWORD argc, LPWSTR* argv)
 
     if (!g_hServiceStatusHandle)
     {
+        WriteServiceMarkerFile(L"service_main_entry.txt", L"RegisterServiceCtrlHandlerExW failed");
         LogError("[-] RegisterServiceCtrlHandlerEx failed");
         return;
     }
@@ -69,15 +115,18 @@ VOID WINAPI ServiceMain::ServiceMainEntry(DWORD argc, LPWSTR* argv)
     g_hStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!g_hStopEvent)
     {
+        WriteServiceMarkerFile(L"service_main_entry.txt", L"CreateEventW failed");
         LogError("[-] Failed to create stop event");
         ReportServiceStatus(SERVICE_STOPPED, GetLastError(), 0);
         return;
     }
 
     // Create worker thread
+    WriteServiceMarkerFile(L"service_main_entry.txt", L"About to CreateThread(worker)");
     g_hWorkerThread = CreateThread(nullptr, 0, ServiceWorkerThread, nullptr, 0, nullptr);
     if (!g_hWorkerThread)
     {
+        WriteServiceMarkerFile(L"service_main_entry.txt", L"CreateThread failed");
         LogError("[-] Failed to create worker thread");
         CloseHandle(g_hStopEvent);
         ReportServiceStatus(SERVICE_STOPPED, GetLastError(), 0);
@@ -128,6 +177,7 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 // Service worker thread
 DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
 {
+    WriteServiceMarkerFile(L"worker_thread_entry.txt", L"ServiceWorkerThread reached");
     // CRITICAL: Write to file IMMEDIATELY before any other code
     // This bypasses LogError() to catch early crashes
     {
