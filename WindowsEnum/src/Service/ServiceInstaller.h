@@ -27,6 +27,12 @@ private:
     // Create secure directory structure
     static bool CreateSecureDirectories();
     
+    // Apply a restrictive DACL to a directory granting write access to the service SID.
+    // Required because SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token
+    // where only SIDs in the restricting list can pass write access checks.
+    // Must be called AFTER the service is registered with SCM (so the service SID exists).
+    static bool ApplyDirectoryAcl(const std::wstring& directoryPath);
+    
     // Create registry configuration with default values
     static bool CreateRegistryConfiguration();
     

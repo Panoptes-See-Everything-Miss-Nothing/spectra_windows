@@ -2,9 +2,20 @@
 #include "ServiceConfig.h"
 #include "ServiceTamperProtection.h"
 #include <shlobj.h>
+#include <aclapi.h>
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shell32.lib")
+
+// RAII deleter for LocalAlloc-based allocations (ACLs, SIDs, security descriptors)
+struct LocalFreeDeleter {
+    void operator()(void* ptr) const noexcept {
+        if (ptr) LocalFree(ptr);
+    }
+};
+
+template <typename T>
+using LocalUniquePtr = std::unique_ptr<T, LocalFreeDeleter>;
 
 // Install the service with full security hardening
 bool ServiceInstaller::InstallService()
@@ -24,7 +35,9 @@ bool ServiceInstaller::InstallService()
 
     LogError("[+] Executable installed to: " + WideToUtf8(installedExePath));
 
-    // Step 2: Create secure directory structure
+    // Step 2: Create directory structure (directories only, ACLs applied later)
+    // ACLs cannot be applied yet because the service SID (NT SERVICE\PanoptesSpectra)
+    // does not exist until CreateServiceW registers it with SCM.
     if (!CreateSecureDirectories())
     {
         LogError("[-] Failed to create secure directories");
@@ -66,6 +79,8 @@ bool ServiceInstaller::InstallService()
     }
 
     // Step 6: Create the service
+    // IMPORTANT: This registers the per-service SID (NT SERVICE\PanoptesSpectra)
+    // with SCM, which is required before we can apply directory ACLs referencing it.
     SC_HANDLE hService = CreateServiceW(
         hSCManager,
         ServiceConfig::SERVICE_NAME,
@@ -101,26 +116,49 @@ bool ServiceInstaller::InstallService()
         LogError("[-] WARNING: Failed to set service description");
     }
 
-    // Step 8: Apply service hardening
+    // Step 8: Apply service hardening (SID restriction, privileges, failure actions)
     if (!ApplyServiceHardening(hService))
     {
         LogError("[-] WARNING: Failed to apply full service hardening");
     }
 
-    // Step 9: Apply tamper protection (restrict who can control the service)
+    // Step 9: Apply directory ACLs NOW that the service SID exists in SCM.
+    // SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token where only
+    // SIDs in the restricting list can pass write-access checks. The per-service
+    // SID (NT SERVICE\PanoptesSpectra) must be explicitly granted Modify access
+    // on every directory the service writes to.
+    {
+        const std::vector<std::wstring> directories = {
+            ServiceConfig::OUTPUT_DIRECTORY,
+            ServiceConfig::LOG_DIRECTORY,
+            ServiceConfig::CONFIG_DIRECTORY,
+            ServiceConfig::TEMP_DIRECTORY
+        };
+
+        for (const auto& dir : directories)
+        {
+            if (!ApplyDirectoryAcl(dir))
+            {
+                LogError("[-] WARNING: Failed to apply ACL to: " + WideToUtf8(dir));
+                LogError("[!] Service may fail to write to this directory at runtime");
+            }
+        }
+    }
+
+    // Step 10: Apply tamper protection (restrict who can control the service)
     if (!ServiceTamperProtection::ApplyTamperProtectionDACL(hService))
     {
         LogError("[-] WARNING: Failed to apply tamper protection");
         LogError("[!] Service may be vulnerable to unauthorized modification");
     }
 
-    // Step 10: Verify installation
+    // Step 11: Verify installation
     if (!VerifyInstallation(hService))
     {
         LogError("[-] WARNING: Installation verification failed");
     }
 
-    // Step 11: Start the service automatically
+    // Step 12: Start the service automatically
     LogError("[+] Starting service...");
     if (!StartServiceW(hService, 0, nullptr))
     {
@@ -316,7 +354,23 @@ bool ServiceInstaller::ApplyServiceHardening(SC_HANDLE hService)
 {
     bool allSuccess = true;
 
-    // Apply service SID restriction (limits attack surface)
+    // Apply service SID restriction (limits attack surface).
+    //
+    // SECURITY NOTE: SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token.
+    // The system performs TWO access checks for write operations:
+    //   1. Normal check against token's enabled SIDs (SYSTEM, service SID, etc.)
+    //   2. Restricted check against ONLY the restricting SID list
+    // Write access is granted only if BOTH checks pass.
+    //
+    // The restricting SID list contains:
+    //   - NT SERVICE\PanoptesSpectra (per-service SID)
+    //   - S-1-1-0 (World/Everyone)
+    //   - Service logon SID
+    //   - S-1-5-33 (Write-restricted SID)
+    //
+    // CONSEQUENCE: All writable directories MUST have explicit ACEs for the
+    // per-service SID. SYSTEM and Administrators ACEs alone are NOT sufficient
+    // for write access. See ApplyDirectoryAcl() and the ACL step in InstallService().
     SERVICE_SID_INFO sidInfo = {};
     sidInfo.dwServiceSidType = SERVICE_SID_TYPE_RESTRICTED;
     if (!ChangeServiceConfig2W(hService, SERVICE_CONFIG_SERVICE_SID_INFO, &sidInfo))
@@ -326,7 +380,7 @@ bool ServiceInstaller::ApplyServiceHardening(SC_HANDLE hService)
     }
     else
     {
-        LogError("[+] Service SID restriction applied");
+        LogError("[+] Service SID restriction applied (write-restricted token)");
     }
 
     // Declare required privileges (for transparency and least privilege)
@@ -378,10 +432,11 @@ bool ServiceInstaller::ApplyServiceHardening(SC_HANDLE hService)
     return allSuccess;
 }
 
-// Create secure directory structure
+// Create directory structure (without ACLs - those are applied after service registration).
+// Directories are created first so logging works during later install steps.
 bool ServiceInstaller::CreateSecureDirectories()
 {
-    std::vector<std::wstring> directories = {
+    const std::vector<std::wstring> directories = {
         ServiceConfig::OUTPUT_DIRECTORY,
         ServiceConfig::LOG_DIRECTORY,
         ServiceConfig::CONFIG_DIRECTORY,
@@ -400,8 +455,9 @@ bool ServiceInstaller::CreateSecureDirectories()
             continue;
         }
 
-        // Create directory with secure ACL (SYSTEM:Full, Admins:Read)
-        // Using SHCreateDirectoryEx for recursive creation
+        // Create directory recursively.
+        // NOTE: SHCreateDirectoryExW with nullptr SECURITY_ATTRIBUTES inherits parent ACLs.
+        // Proper ACLs are applied later via ApplyDirectoryAcl() after service SID registration.
         int result = SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
         if (result == ERROR_SUCCESS || result == ERROR_ALREADY_EXISTS)
         {
@@ -416,6 +472,140 @@ bool ServiceInstaller::CreateSecureDirectories()
     }
 
     return allSuccess;
+}
+
+// Apply a restrictive DACL to a directory.
+//
+// Grants:
+//   SYSTEM                       - Full Control (with inheritance to children)
+//   BUILTIN\Administrators       - Full Control (with inheritance to children)
+//   NT SERVICE\PanoptesSpectra   - Modify       (with inheritance to children)
+//
+// SECURITY DECISIONS:
+//   - Service SID gets Modify, NOT Full Control. Full Control would include
+//     WRITE_DAC and WRITE_OWNER, allowing a compromised service to change ACLs
+//     and escalate access. Modify (read/write/execute/delete) is sufficient for
+//     writing logs and JSON files.
+//   - PROTECTED_DACL prevents inheriting permissive ACEs from parent directories.
+//   - Must be called AFTER CreateServiceW so that the "NT SERVICE\<name>" virtual
+//     account can be resolved by SetEntriesInAclW. Calling before registration
+//     fails with ERROR_NONE_MAPPED (1332).
+bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
+{
+    // Validate input
+    if (directoryPath.empty())
+    {
+        LogError("[-] ApplyDirectoryAcl called with empty path");
+        return false;
+    }
+
+    // Verify directory exists before applying ACL
+    DWORD attribs = GetFileAttributesW(directoryPath.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        LogError("[-] Directory does not exist for ACL application: " + WideToUtf8(directoryPath));
+        return false;
+    }
+
+    // Allocate well-known SIDs using CreateWellKnownSid (consistent with ServiceTamperProtection)
+    DWORD cbSystemSid = SECURITY_MAX_SID_SIZE;
+    DWORD cbAdminSid = SECURITY_MAX_SID_SIZE;
+
+    LocalUniquePtr<void> pSystemSid(LocalAlloc(LPTR, cbSystemSid));
+    LocalUniquePtr<void> pAdminSid(LocalAlloc(LPTR, cbAdminSid));
+
+    if (!pSystemSid || !pAdminSid)
+    {
+        LogError("[-] Failed to allocate memory for SIDs");
+        return false;
+    }
+
+    if (!CreateWellKnownSid(WinLocalSystemSid, nullptr, pSystemSid.get(), &cbSystemSid))
+    {
+        LogError("[-] Failed to create SYSTEM SID, error: " + std::to_string(GetLastError()));
+        return false;
+    }
+
+    if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, nullptr, pAdminSid.get(), &cbAdminSid))
+    {
+        LogError("[-] Failed to create Administrators SID, error: " + std::to_string(GetLastError()));
+        return false;
+    }
+
+    // Build the service trustee name: "NT SERVICE\PanoptesSpectra"
+    // SetEntriesInAclW resolves this to the per-service SID at call time.
+    std::wstring serviceTrustee = L"NT SERVICE\\";
+    serviceTrustee += ServiceConfig::SERVICE_NAME;
+
+    // Build EXPLICIT_ACCESS entries
+    EXPLICIT_ACCESSW ea[3] = {};
+
+    // ACE 0: SYSTEM - Full Control, inherited to sub-containers and objects
+    ea[0].grfAccessPermissions = FILE_ALL_ACCESS;
+    ea[0].grfAccessMode = SET_ACCESS;
+    ea[0].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea[0].Trustee.TrusteeType = TRUSTEE_IS_USER;
+    ea[0].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pSystemSid.get());
+
+    // ACE 1: Administrators - Full Control, inherited to sub-containers and objects
+    ea[1].grfAccessPermissions = FILE_ALL_ACCESS;
+    ea[1].grfAccessMode = SET_ACCESS;
+    ea[1].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[1].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea[1].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+    ea[1].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pAdminSid.get());
+
+    // ACE 2: Service SID - Modify (NOT Full Control), inherited to sub-containers and objects
+    // Modify = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE
+    // This intentionally excludes WRITE_DAC and WRITE_OWNER to prevent a compromised
+    // service from modifying its own directory permissions.
+    ea[2].grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+    ea[2].grfAccessMode = SET_ACCESS;
+    ea[2].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[2].Trustee.TrusteeForm = TRUSTEE_IS_NAME;
+    ea[2].Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
+    ea[2].Trustee.ptstrName = const_cast<LPWSTR>(serviceTrustee.c_str());
+
+    // Create the ACL from explicit access entries (no existing ACL to merge with)
+    PACL pAcl = nullptr;
+    DWORD dwResult = SetEntriesInAclW(3, ea, nullptr, &pAcl);
+    if (dwResult != ERROR_SUCCESS)
+    {
+        LogError("[-] SetEntriesInAclW failed for " + WideToUtf8(directoryPath) +
+                 ", error: " + std::to_string(dwResult));
+        if (dwResult == 1332) // ERROR_NONE_MAPPED
+        {
+            LogError("[-] The service SID could not be resolved. Ensure the service is registered with SCM first.");
+        }
+        return false;
+    }
+
+    // RAII guard for the ACL allocated by SetEntriesInAclW (uses LocalAlloc internally)
+    LocalUniquePtr<ACL> aclGuard(pAcl);
+
+    // Apply the DACL to the directory.
+    // PROTECTED_DACL_SECURITY_INFORMATION prevents inheriting ACEs from parent directories,
+    // ensuring our explicit ACL is the sole authority on permissions for this directory tree.
+    dwResult = SetNamedSecurityInfoW(
+        const_cast<LPWSTR>(directoryPath.c_str()),
+        SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+        nullptr,    // Owner: unchanged
+        nullptr,    // Group: unchanged
+        pAcl,       // New DACL
+        nullptr);   // SACL: unchanged
+
+    if (dwResult != ERROR_SUCCESS)
+    {
+        LogError("[-] SetNamedSecurityInfoW failed for " + WideToUtf8(directoryPath) +
+                 ", error: " + std::to_string(dwResult));
+        return false;
+    }
+
+    LogError("[+] Applied directory ACL: " + WideToUtf8(directoryPath) +
+             " (SYSTEM:F, Administrators:F, " + WideToUtf8(serviceTrustee) + ":M)");
+    return true;
 }
 
 // Create registry configuration with default values
