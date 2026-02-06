@@ -3,7 +3,7 @@
 #include "PrivMgmt.h"
 #include "VSSSnapshot.h"
 #include "RegistryHiveLoader.h"
-#include "../Utils/Utils.h"
+#include "./Utils/Utils.h"
 #include <sstream>
 #include <iomanip>
 #include <array>

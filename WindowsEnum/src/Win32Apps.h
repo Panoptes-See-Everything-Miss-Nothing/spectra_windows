@@ -1,7 +1,7 @@
 #pragma once
 
 #include "UserProfiles.h"
-#include "../Utils/Utils.h"
+#include "./Utils/Utils.h"
 
 // Installed application information
 struct InstalledApp

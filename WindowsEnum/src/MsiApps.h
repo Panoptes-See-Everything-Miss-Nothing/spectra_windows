@@ -3,7 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <Msi.h>
-#include "../Utils/Utils.h"
+#include "./Utils/Utils.h"
 
 // MSI-installed application information
 struct MsiApp

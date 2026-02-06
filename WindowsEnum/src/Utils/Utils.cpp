@@ -1,6 +1,8 @@
 #include "Utils.h"
-#include "../WindowsEnum/WindowsEnum.h"
-#include "../WindowsEnum/WinAppXPackages.h"
+#include "../WindowsEnum.h"
+#include "../WinAppXPackages.h"
+#include "../Service/MachineId.h"
+#include "../Service/ServiceConfig.h"
 #include <aclapi.h>
 #include <sddl.h>
 #include <unordered_map>
@@ -19,7 +21,23 @@ void LogError(const std::string& message)
     struct tm timeinfo;
     // Lock for thread safety
     std::lock_guard<std::mutex> lock(g_logMutex);
-    fs::path logPath = fs::current_path() / "spectra_log.txt";
+    
+    // Use proper log directory when running as service, fallback to current directory for console mode
+    std::wstring logDir = ServiceConfig::LOG_DIRECTORY;
+    DWORD attribs = GetFileAttributesW(logDir.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES || !(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        // Log directory doesn't exist, try to use current directory (console mode)
+        try {
+            logDir = fs::current_path().wstring();
+        }
+        catch (...) {
+            // current_path() failed (service worker thread), use System32 as last resort
+            logDir = L"C:\\Windows\\System32";
+        }
+    }
+    
+    fs::path logPath = fs::path(logDir) / "spectra_log.txt";
     
     try {
         std::ofstream logFile(logPath, std::ios::app);
@@ -420,9 +438,32 @@ std::string GenerateJSON()
 
     svipAddresses = GetLocalIPAddresses();
 
+    // Get ISO 8601 timestamp for collection
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    struct tm timeinfo = {};
+    std::string timestamp;
+    
+    if (localtime_s(&timeinfo, &time) == 0)
+    {
+        std::ostringstream timestampStream;
+        timestampStream << std::put_time(&timeinfo, "%Y-%m-%dT%H:%M:%S");
+        timestamp = timestampStream.str();
+    }
+    else
+    {
+        timestamp = "UNKNOWN";
+    }
+
     // JSON Begin
     std::ostringstream out;
     out << "{\n";
+    
+    // Add Spectra Machine ID as the first field
+    out << "  \"spectraMachineId\": \"" << MachineId::GetMachineIdUtf8() << "\",\n";
+    out << "  \"collectionTimestamp\": \"" << timestamp << "\",\n";
+    out << "  \"agentVersion\": \"" << WideToUtf8(ServiceConfig::VERSION) << "\",\n";
+    
     out << "  \"machineNetBiosName\": " << JsonEscape(machineNames.netbiosName) << ",\n";
     out << "  \"machineDnsName\": " << JsonEscape(machineNames.dnsName) << ",\n";
     out << "  \"ipAddresses\": [\n";
