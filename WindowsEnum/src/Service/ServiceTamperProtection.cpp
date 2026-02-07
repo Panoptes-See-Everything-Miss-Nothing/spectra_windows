@@ -64,20 +64,28 @@ bool ServiceTamperProtection::ApplyTamperProtectionDACL(SC_HANDLE hService)
     LocalFree(pNewDACL);
 
     LogError("[+] Service tamper protection applied successfully");
-    LogError("[!] Only Administrators with UAC can start/stop the service");
-    LogError("[!] Service configuration is locked against unauthorized modification");
+    LogError("[!] Only SYSTEM can delete or reconfigure the service");
+    LogError("[!] Administrators can start/stop and modify DACL (for uninstall)");
 
     return true;
 }
 
 // Create a restrictive DACL that allows:
 // - SYSTEM: Full control (SERVICE_ALL_ACCESS)
-// - Administrators: Start, Stop, Query status
+// - Administrators: Start, Stop, Query, Modify DACL (for uninstall)
 // - Users: Query status only (read-only)
-// - DENY: Everyone from deleting service or changing configuration
+//
+// SECURITY: DELETE and SERVICE_CHANGE_CONFIG are NOT granted to Administrators or Users.
+// Because this is a PROTECTED DACL (no inheritance), any right not explicitly granted
+// is implicitly denied. This is more reliable than explicit DENY ACEs, which can cause
+// unexpected interactions when principals belong to multiple groups (e.g., Administrators
+// are also members of Everyone).
+//
+// To uninstall: admin opens with WRITE_DAC, replaces the DACL via RemoveTamperProtection()
+// to grant DELETE, then re-opens with DELETE to call DeleteService().
 PACL ServiceTamperProtection::CreateServiceDACL()
 {
-    EXPLICIT_ACCESSW ea[4] = {};
+    EXPLICIT_ACCESSW ea[3] = {};
     PACL pACL = nullptr;
     DWORD dwResult = 0;
 
@@ -85,9 +93,8 @@ PACL ServiceTamperProtection::CreateServiceDACL()
     PSID pSystemSid = GetWellKnownSid(WinLocalSystemSid);
     PSID pAdminSid = GetWellKnownSid(WinBuiltinAdministratorsSid);
     PSID pUsersSid = GetWellKnownSid(WinBuiltinUsersSid);
-    PSID pEveryoneSid = GetWellKnownSid(WinWorldSid);
 
-    if (!pSystemSid || !pAdminSid || !pUsersSid || !pEveryoneSid)
+    if (!pSystemSid || !pAdminSid || !pUsersSid)
     {
         LogError("[-] Failed to get well-known SIDs for service DACL");
         goto Cleanup;
@@ -101,11 +108,14 @@ PACL ServiceTamperProtection::CreateServiceDACL()
     ea[0].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
     ea[0].Trustee.ptstrName = (LPWSTR)pSystemSid;
 
-    // ACE 1: Administrators can start, stop, query status, and interrogate
-    // Note: SERVICE_QUERY_CONFIG and SERVICE_CHANGE_CONFIG are EXCLUDED
-    ea[1].grfAccessPermissions = SERVICE_START | SERVICE_STOP | 
+    // ACE 1: Administrators can start, stop, query, interrogate, read config, and modify DACL.
+    // Notably ABSENT: DELETE, SERVICE_CHANGE_CONFIG, WRITE_OWNER
+    // This means admins CANNOT delete the service or change its config without first
+    // modifying the DACL (which requires WRITE_DAC, granted here).
+    ea[1].grfAccessPermissions = SERVICE_START | SERVICE_STOP |
                                   SERVICE_QUERY_STATUS | SERVICE_INTERROGATE |
-                                  READ_CONTROL;
+                                  SERVICE_QUERY_CONFIG |
+                                  READ_CONTROL | WRITE_DAC;
     ea[1].grfAccessMode = SET_ACCESS;
     ea[1].grfInheritance = NO_INHERITANCE;
     ea[1].Trustee.TrusteeForm = TRUSTEE_IS_SID;
@@ -120,17 +130,8 @@ PACL ServiceTamperProtection::CreateServiceDACL()
     ea[2].Trustee.TrusteeType = TRUSTEE_IS_GROUP;
     ea[2].Trustee.ptstrName = (LPWSTR)pUsersSid;
 
-    // ACE 3: DENY Everyone from deleting the service or changing config
-    // This is a DENY ACE - it takes precedence over ALLOW ACEs
-    ea[3].grfAccessPermissions = DELETE | SERVICE_CHANGE_CONFIG;
-    ea[3].grfAccessMode = DENY_ACCESS;
-    ea[3].grfInheritance = NO_INHERITANCE;
-    ea[3].Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    ea[3].Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-    ea[3].Trustee.ptstrName = (LPWSTR)pEveryoneSid;
-
-    // Create the ACL
-    dwResult = SetEntriesInAclW(4, ea, nullptr, &pACL);
+    // Create the ACL (no DENY ACEs - protection comes from not granting DELETE/CHANGE_CONFIG)
+    dwResult = SetEntriesInAclW(3, ea, nullptr, &pACL);
     if (dwResult != ERROR_SUCCESS)
     {
         LogError("[-] SetEntriesInAcl failed, error: " + std::to_string(dwResult));
@@ -141,7 +142,6 @@ Cleanup:
     if (pSystemSid) FreeSid(pSystemSid);
     if (pAdminSid) FreeSid(pAdminSid);
     if (pUsersSid) FreeSid(pUsersSid);
-    if (pEveryoneSid) FreeSid(pEveryoneSid);
 
     return pACL;
 }

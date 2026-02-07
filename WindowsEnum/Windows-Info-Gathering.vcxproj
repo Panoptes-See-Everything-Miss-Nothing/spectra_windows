@@ -183,6 +183,7 @@
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Service\MachineId.cpp" />
     <ClCompile Include="src\Service\ServiceConfig.cpp" />
+    <ClCompile Include="src\Service\ServiceInstaller.cpp" />
     <ClCompile Include="src\Utils\Utils.cpp" />
     <ClCompile Include="src\AppXPackages.cpp" />
     <ClCompile Include="src\MachineInfo.cpp" />
@@ -194,7 +195,6 @@
     <ClCompile Include="src\VSSSnapshot.cpp" />
     <ClCompile Include="src\Win32Apps.cpp" />
     <ClCompile Include="src\WinAppXPackages.cpp" />
-    <ClCompile Include="src\Service\ServiceInstaller.cpp" />
     <ClCompile Include="src\Service\ServiceMain.cpp" />
     <ClCompile Include="src\Service\ServiceTamperProtection.cpp" />
   </ItemGroup>
