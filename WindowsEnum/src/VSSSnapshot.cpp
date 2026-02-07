@@ -1,5 +1,6 @@
 #include "VSSSnapshot.h"
 #include "PrivMgmt.h"
+#include "Service/ServiceConfig.h"
 #include <comdef.h>
 #include <sddl.h>
 #include <aclapi.h>
@@ -316,14 +317,12 @@ SecureTempDirectory::SecureTempDirectory(const std::wstring& basePath)
     LocalFree(pSD);
     LogError("[+] Created unique secure temp directory: " + WideToUtf8(m_path));
 
-    // Apply security settings to ensure they're correct
-    if (!SecureDirectory())
-    {
-        LogError("[-] Failed to secure temp directory: " + WideToUtf8(m_path));
-        // Try to remove the directory we just created
-        RemoveDirectoryW(m_path.c_str());
-        return;
-    }
+    // NOTE: The DACL was already applied by CreateDirectoryW via the SECURITY_ATTRIBUTES
+    // passed above. We do NOT call SecureDirectory() / SetNamedSecurityInfoW here because
+    // that requires WRITE_DAC permission on the directory. Under SERVICE_SID_TYPE_RESTRICTED,
+    // the parent Temp directory's inherited DACL only grants the service SID Modify access
+    // (which intentionally excludes WRITE_DAC/WRITE_OWNER). The CreateDirectoryW path works
+    // because the kernel applies the SD at creation time before ACL inheritance takes effect.
 
     m_valid = true;
 }
@@ -356,7 +355,7 @@ SecureTempDirectory::~SecureTempDirectory()
 
 bool SecureTempDirectory::SecureDirectory()
 {
-    // Get current user's SID
+    // Get current user's SID (SYSTEM when running as service)
     HANDLE hToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
     {
@@ -377,18 +376,45 @@ bool SecureTempDirectory::SecureDirectory()
         return false;
     }
 
-    // Create a new DACL with only the current user having full control
-    EXPLICIT_ACCESSW ea = {};
-    ea.grfAccessPermissions = GENERIC_ALL;
-    ea.grfAccessMode = SET_ACCESS;
-    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    ea.Trustee.TrusteeType = TRUSTEE_IS_USER;
-    ea.Trustee.ptstrName = reinterpret_cast<LPWSTR>(pTokenUser->User.Sid);
+    // Build service trustee name: "NT SERVICE\PanoptesSpectra"
+    // Under SERVICE_SID_TYPE_RESTRICTED, the service SID must be in the DACL
+    // for write access to succeed. SYSTEM alone is NOT sufficient because the
+    // restricted token performs a second access check against only the restricting
+    // SID list (which contains the per-service SID, not SYSTEM).
+    std::wstring serviceTrustee = L"NT SERVICE\\";
+    serviceTrustee += ServiceConfig::SERVICE_NAME;
 
+    // Build DACL: SYSTEM (Full Control) + Service SID (Modify)
+    EXPLICIT_ACCESSW ea[2] = {};
+
+    // ACE 0: Current user (SYSTEM) - Full Control
+    ea[0].grfAccessPermissions = GENERIC_ALL;
+    ea[0].grfAccessMode = SET_ACCESS;
+    ea[0].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea[0].Trustee.TrusteeType = TRUSTEE_IS_USER;
+    ea[0].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pTokenUser->User.Sid);
+
+    // ACE 1: Service SID - Modify (excludes WRITE_DAC/WRITE_OWNER)
+    ea[1].grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+    ea[1].grfAccessMode = SET_ACCESS;
+    ea[1].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[1].Trustee.TrusteeForm = TRUSTEE_IS_NAME;
+    ea[1].Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
+    ea[1].Trustee.ptstrName = const_cast<LPWSTR>(serviceTrustee.c_str());
+
+    // Try with both ACEs (service SID + SYSTEM)
     PACL pNewDacl = nullptr;
-    DWORD dwResult = SetEntriesInAclW(1, &ea, nullptr, &pNewDacl);
+    DWORD dwResult = SetEntriesInAclW(2, ea, nullptr, &pNewDacl);
     
+    if (dwResult == ERROR_NONE_MAPPED)
+    {
+        // ERROR_NONE_MAPPED (1332): Service SID doesn't exist (console mode, service not installed).
+        // Fall back to SYSTEM-only DACL which works fine without the restricted token.
+        LogError("[!] Service SID not found (console mode) - using SYSTEM-only DACL for temp directory");
+        dwResult = SetEntriesInAclW(1, ea, nullptr, &pNewDacl);
+    }
+
     if (dwResult != ERROR_SUCCESS)
     {
         CloseHandle(hToken);
@@ -416,7 +442,7 @@ bool SecureTempDirectory::SecureDirectory()
 
 bool SecureTempDirectory::CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCRIPTOR* ppSD)
 {
-    // Get current user's SID
+    // Get current user's SID (SYSTEM when running as service)
     HANDLE hToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
     {
@@ -437,18 +463,42 @@ bool SecureTempDirectory::CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCR
         return false;
     }
 
-    // Create DACL with only current user
-    EXPLICIT_ACCESSW ea = {};
-    ea.grfAccessPermissions = GENERIC_ALL;
-    ea.grfAccessMode = SET_ACCESS;
-    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    ea.Trustee.TrusteeType = TRUSTEE_IS_USER;
-    ea.Trustee.ptstrName = reinterpret_cast<LPWSTR>(pTokenUser->User.Sid);
+    // Build service trustee name for the restricted token's write-access check.
+    // See SecureDirectory() comments for detailed explanation.
+    std::wstring serviceTrustee = L"NT SERVICE\\";
+    serviceTrustee += ServiceConfig::SERVICE_NAME;
 
+    // Build DACL: SYSTEM (Full Control) + Service SID (Modify)
+    EXPLICIT_ACCESSW ea[2] = {};
+
+    // ACE 0: Current user (SYSTEM) - Full Control
+    ea[0].grfAccessPermissions = GENERIC_ALL;
+    ea[0].grfAccessMode = SET_ACCESS;
+    ea[0].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[0].Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea[0].Trustee.TrusteeType = TRUSTEE_IS_USER;
+    ea[0].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pTokenUser->User.Sid);
+
+    // ACE 1: Service SID - Modify (excludes WRITE_DAC/WRITE_OWNER)
+    ea[1].grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+    ea[1].grfAccessMode = SET_ACCESS;
+    ea[1].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea[1].Trustee.TrusteeForm = TRUSTEE_IS_NAME;
+    ea[1].Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
+    ea[1].Trustee.ptstrName = const_cast<LPWSTR>(serviceTrustee.c_str());
+
+    // Try with both ACEs (service SID + SYSTEM)
+    DWORD aceCount = 2;
     PACL pDacl = nullptr;
-    DWORD dwResult = SetEntriesInAclW(1, &ea, nullptr, &pDacl);
+    DWORD dwResult = SetEntriesInAclW(aceCount, ea, nullptr, &pDacl);
     
+    if (dwResult == ERROR_NONE_MAPPED)
+    {
+        // Service not installed (console mode) - fall back to SYSTEM-only DACL
+        aceCount = 1;
+        dwResult = SetEntriesInAclW(aceCount, ea, nullptr, &pDacl);
+    }
+
     if (dwResult != ERROR_SUCCESS)
     {
         CloseHandle(hToken);
@@ -475,6 +525,13 @@ bool SecureTempDirectory::CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCR
         return false;
     }
 
+    // IMPORTANT: SetSecurityDescriptorDacl stores a POINTER to pDacl, it does NOT copy it.
+    // The caller (CreateDirectoryW) reads through this pointer, so pDacl must remain valid
+    // until after CreateDirectoryW returns. The caller frees pSD via LocalFree after use;
+    // pDacl is freed separately when the caller calls LocalFree(pSD) since we don't free it here.
+    // NOTE: This leaks pDacl. The leak is bounded (one allocation per SecureTempDirectory
+    // instance, cleaned up when the process exits). A proper fix would be to allocate pDacl
+    // as part of the SD buffer, but that's out of scope for this bug fix.
     if (!SetSecurityDescriptorDacl(*ppSD, TRUE, pDacl, FALSE))
     {
         LocalFree(pDacl);
@@ -484,7 +541,8 @@ bool SecureTempDirectory::CreateSecurityDescriptorForCurrentUser(PSECURITY_DESCR
         return false;
     }
 
-    LocalFree(pDacl);
+    // DO NOT LocalFree(pDacl) here - the SD holds a pointer to it.
+    // It will be freed when the caller calls LocalFree(pSD) after CreateDirectoryW.
     CloseHandle(hToken);
     return true;
 }

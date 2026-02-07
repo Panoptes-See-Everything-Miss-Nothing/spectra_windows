@@ -4,6 +4,8 @@
 #include "VSSSnapshot.h"
 #include "RegistryHiveLoader.h"
 #include "./Utils/Utils.h"
+#include "./Service/ServiceConfig.h"
+#include <shlobj.h>
 #include <sstream>
 #include <iomanip>
 #include <array>
@@ -96,8 +98,26 @@ std::vector<InstalledApp> GetUserInstalledApps(const UserProfile& userProfile)
         return apps;
     }
 
-    // Create secure temporary directory
-    SecureTempDirectory tempDir(L"C:\\SpectraVM_Temp");
+    // Create secure temporary directory under the service's Temp directory.
+    // This directory has the service SID Modify ACE applied at install time,
+    // which is required for the write-restricted SERVICE_SID_TYPE_RESTRICTED token.
+    // Using C:\ root would fail with ERROR_ACCESS_DENIED (5) under the restricted token.
+    std::wstring tempBasePath = std::wstring(ServiceConfig::TEMP_DIRECTORY) + L"\\SpectraVM";
+
+    // Ensure parent Temp directory exists (handles console mode where /install was never run)
+    DWORD tempDirAttribs = GetFileAttributesW(ServiceConfig::TEMP_DIRECTORY);
+    if (tempDirAttribs == INVALID_FILE_ATTRIBUTES)
+    {
+        int createResult = SHCreateDirectoryExW(nullptr, ServiceConfig::TEMP_DIRECTORY, nullptr);
+        if (createResult != ERROR_SUCCESS && createResult != ERROR_ALREADY_EXISTS)
+        {
+            LogError("[-] Failed to create temp parent directory: " + WideToUtf8(ServiceConfig::TEMP_DIRECTORY) +
+                     ", error: " + std::to_string(createResult));
+            return apps;
+        }
+    }
+
+    SecureTempDirectory tempDir(tempBasePath);
     if (!tempDir.IsValid())
     {
         LogError("[-] Failed to create secure temporary directory");

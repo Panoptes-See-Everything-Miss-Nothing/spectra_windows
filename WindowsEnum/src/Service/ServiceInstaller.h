@@ -33,6 +33,11 @@ private:
     // Must be called AFTER the service is registered with SCM (so the service SID exists).
     static bool ApplyDirectoryAcl(const std::wstring& directoryPath);
     
+    // Apply write ACL to the service's registry configuration key.
+    // Required so the restricted service token can write Machine ID and other runtime state
+    // to HKLM\SOFTWARE\Panoptes\Spectra. Must be called AFTER CreateServiceW.
+    static bool ApplyRegistryKeyAcl();
+    
     // Create registry configuration with default values
     static bool CreateRegistryConfiguration();
     

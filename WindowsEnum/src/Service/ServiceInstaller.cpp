@@ -145,6 +145,17 @@ bool ServiceInstaller::InstallService()
         }
     }
 
+    // Step 9.5: Apply registry key ACL so the restricted service token can write
+    // Machine ID and runtime state to HKLM\SOFTWARE\Panoptes\Spectra.
+    // Without this, RegCreateKeyExW with KEY_WRITE fails with ERROR_ACCESS_DENIED (5)
+    // because the restricted token's second access check requires the service SID
+    // in the key's DACL.
+    if (!ApplyRegistryKeyAcl())
+    {
+        LogError("[-] WARNING: Failed to apply registry key ACL");
+        LogError("[!] Service may fail to persist Machine ID (will regenerate each run)");
+    }
+
     // Step 10: Apply tamper protection (restrict who can control the service)
     if (!ServiceTamperProtection::ApplyTamperProtectionDACL(hService))
     {
@@ -608,6 +619,122 @@ bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
     return true;
 }
 
+// Apply a DACL to the service's registry configuration key so the restricted
+// service token can write Machine ID and other runtime state.
+//
+// Grants (merged with existing DACL to preserve default HKLM permissions):
+//   NT SERVICE\PanoptesSpectra - KEY_READ | KEY_WRITE (on this key + subkeys)
+//
+// SECURITY DECISIONS:
+//   - Merges with existing DACL rather than replacing, so SYSTEM and Administrators
+//     retain their default HKLM permissions.
+//   - Service SID gets KEY_READ | KEY_WRITE, NOT KEY_ALL_ACCESS. This excludes
+//     WRITE_DAC and WRITE_OWNER to prevent a compromised service from modifying
+//     the key's ACL or taking ownership.
+//   - Uses SUB_CONTAINERS_AND_OBJECTS_INHERIT so subkeys created by the service
+//     also inherit the service SID ACE.
+//   - Must be called AFTER CreateServiceW so the service SID exists.
+bool ServiceInstaller::ApplyRegistryKeyAcl()
+{
+    // Build the service trustee name
+    std::wstring serviceTrustee = L"NT SERVICE\\";
+    serviceTrustee += ServiceConfig::SERVICE_NAME;
+
+    // Create a single EXPLICIT_ACCESS entry for the service SID.
+    // We merge this into the existing DACL so SYSTEM/Administrators keep their
+    // default HKLM permissions. Replacing the DACL entirely would strip those.
+    EXPLICIT_ACCESSW ea = {};
+    ea.grfAccessPermissions = KEY_READ | KEY_WRITE;
+    ea.grfAccessMode = GRANT_ACCESS;
+    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea.Trustee.TrusteeForm = TRUSTEE_IS_NAME;
+    ea.Trustee.TrusteeType = TRUSTEE_IS_UNKNOWN;
+    ea.Trustee.ptstrName = const_cast<LPWSTR>(serviceTrustee.c_str());
+
+    // Open the registry key to read its current DACL
+    HKEY hKey = nullptr;
+    LONG regResult = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        ServiceConfig::REGISTRY_KEY,
+        0,
+        READ_CONTROL | WRITE_DAC,
+        &hKey);
+
+    if (regResult != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to open registry key for ACL modification, error: " + std::to_string(regResult));
+        return false;
+    }
+
+    // Get the existing DACL
+    PSECURITY_DESCRIPTOR pSD = nullptr;
+    PACL pExistingDacl = nullptr;
+
+    DWORD dwResult = GetSecurityInfo(
+        hKey,
+        SE_REGISTRY_KEY,
+        DACL_SECURITY_INFORMATION,
+        nullptr,
+        nullptr,
+        &pExistingDacl,
+        nullptr,
+        &pSD);
+
+    if (dwResult != ERROR_SUCCESS)
+    {
+        LogError("[-] Failed to get existing registry key DACL, error: " + std::to_string(dwResult));
+        RegCloseKey(hKey);
+        return false;
+    }
+
+    // Merge the new ACE into the existing DACL
+    PACL pNewDacl = nullptr;
+    dwResult = SetEntriesInAclW(1, &ea, pExistingDacl, &pNewDacl);
+
+    // Free the security descriptor returned by GetSecurityInfo (allocated via LocalAlloc)
+    if (pSD)
+    {
+        LocalFree(pSD);
+        pSD = nullptr;
+    }
+
+    if (dwResult != ERROR_SUCCESS)
+    {
+        LogError("[-] SetEntriesInAclW failed for registry key, error: " + std::to_string(dwResult));
+        if (dwResult == 1332) // ERROR_NONE_MAPPED
+        {
+            LogError("[-] Service SID could not be resolved. Ensure service is registered with SCM first.");
+        }
+        RegCloseKey(hKey);
+        return false;
+    }
+
+    // RAII guard for the merged ACL
+    LocalUniquePtr<ACL> aclGuard(pNewDacl);
+
+    // Apply the merged DACL back to the registry key
+    dwResult = SetSecurityInfo(
+        hKey,
+        SE_REGISTRY_KEY,
+        DACL_SECURITY_INFORMATION,
+        nullptr,
+        nullptr,
+        pNewDacl,
+        nullptr);
+
+    RegCloseKey(hKey);
+
+    if (dwResult != ERROR_SUCCESS)
+    {
+        LogError("[-] SetSecurityInfo failed for registry key, error: " + std::to_string(dwResult));
+        return false;
+    }
+
+    LogError("[+] Applied registry key ACL: HKLM\\" + WideToUtf8(ServiceConfig::REGISTRY_KEY) +
+             " (" + WideToUtf8(serviceTrustee) + ":RW)");
+    return true;
+}
+
 // Create registry configuration with default values
 bool ServiceInstaller::CreateRegistryConfiguration()
 {
@@ -663,7 +790,7 @@ bool ServiceInstaller::CreateRegistryConfiguration()
     std::wstring outputDir = ServiceConfig::DEFAULT_OUTPUT_DIRECTORY;
     result = RegSetValueExW(hKey, ServiceConfig::REG_OUTPUT_DIRECTORY, 0, REG_SZ, 
                            (const BYTE*)outputDir.c_str(), 
-                           (outputDir.length() + 1) * sizeof(wchar_t));
+                           static_cast<DWORD>((outputDir.length() + 1) * sizeof(wchar_t)));
     if (result != ERROR_SUCCESS)
     {
         LogError("[-] Failed to set OutputDirectory, error: " + std::to_string(result));
@@ -692,7 +819,7 @@ bool ServiceInstaller::CreateRegistryConfiguration()
     std::wstring serverUrl = L"";
     result = RegSetValueExW(hKey, ServiceConfig::REG_SERVER_URL, 0, REG_SZ, 
                            (const BYTE*)serverUrl.c_str(), 
-                           (serverUrl.length() + 1) * sizeof(wchar_t));
+                           static_cast<DWORD>((serverUrl.length() + 1) * sizeof(wchar_t)));
     if (result != ERROR_SUCCESS)
     {
         LogError("[-] Failed to set ServerUrl, error: " + std::to_string(result));
