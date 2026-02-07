@@ -100,7 +100,7 @@ bool ServiceInstaller::InstallService()
     if (!hService)
     {
         DWORD error = GetLastError();
-        LogError("[-] CreateService failed, error: " + std::to_string(error) + 
+        LogError("[-] CreateService failed, error: " + std::to_string(error) +
                  " - " + GetWindowsErrorMessage(error));
         CloseServiceHandle(hSCManager);
         return false;
@@ -147,9 +147,6 @@ bool ServiceInstaller::InstallService()
 
     // Step 9.5: Apply registry key ACL so the restricted service token can write
     // Machine ID and runtime state to HKLM\SOFTWARE\Panoptes\Spectra.
-    // Without this, RegCreateKeyExW with KEY_WRITE fails with ERROR_ACCESS_DENIED (5)
-    // because the restricted token's second access check requires the service SID
-    // in the key's DACL.
     if (!ApplyRegistryKeyAcl())
     {
         LogError("[-] WARNING: Failed to apply registry key ACL");
@@ -180,10 +177,10 @@ bool ServiceInstaller::InstallService()
     else
     {
         LogError("[+] Service started successfully!");
-        
+
         // Wait a moment for service to fully start
         Sleep(2000);
-        
+
         SERVICE_STATUS ss = {};
         if (QueryServiceStatus(hService, &ss) && ss.dwCurrentState == SERVICE_RUNNING)
         {
@@ -205,90 +202,477 @@ bool ServiceInstaller::InstallService()
     return true;
 }
 
-// Uninstall the service cleanly
+// Uninstall the service and remove all installation artifacts.
+//
+// SECURITY: Requires Administrator privileges. Three barriers prevent non-admin uninstall:
+//   1. OpenSCManagerW with SC_MANAGER_ALL_ACCESS requires admin elevation
+//   2. OpenServiceW with WRITE_DAC requires admin (Users only get SERVICE_QUERY_STATUS)
+//   3. Artifact cleanup writes to HKLM, Program Files, and ProgramData (admin-only)
+//
+// The tamper protection DACL applies DENY DELETE to Everyone, which blocks even
+// administrators from opening the service with DELETE access directly. To work around
+// this, we open with WRITE_DAC first (allowed for admins), remove the DENY ACE via
+// RemoveTamperProtection(), then re-open with DELETE to perform the actual deletion.
 bool ServiceInstaller::UninstallService()
 {
-    LogError("[+] Uninstalling " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME) + "...");
+    // SECURITY: Only allow uninstallation from the installed executable location.
+    // This prevents an attacker from copying the binary elsewhere and running /uninstall
+    // from an uncontrolled path. The installed path is protected by Program Files ACLs.
+    //
+    // We query SCM for the registered binary path rather than hardcoding it, so this
+    // works correctly for both x64 (C:\Program Files\...) and x86 builds running under
+    // WOW64 (C:\Program Files (x86)\...).
+    {
+        WCHAR currentExePath[MAX_PATH] = {};
+        DWORD pathLen = GetModuleFileNameW(nullptr, currentExePath, MAX_PATH);
+        if (pathLen == 0 || pathLen >= MAX_PATH)
+        {
+            LogError("[-] Failed to determine current executable path");
+            return false;
+        }
+
+        // Query SCM for the registered service binary path
+        std::wstring registeredPath;
+        SC_HANDLE hSCMQuery = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+        if (hSCMQuery)
+        {
+            SC_HANDLE hSvcQuery = OpenServiceW(hSCMQuery, ServiceConfig::SERVICE_NAME, SERVICE_QUERY_CONFIG);
+            if (hSvcQuery)
+            {
+                // First call to get required buffer size
+                DWORD bytesNeeded = 0;
+                QueryServiceConfigW(hSvcQuery, nullptr, 0, &bytesNeeded);
+                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && bytesNeeded > 0)
+                {
+                    std::vector<BYTE> buffer(bytesNeeded);
+                    auto pConfig = reinterpret_cast<LPQUERY_SERVICE_CONFIGW>(buffer.data());
+                    if (QueryServiceConfigW(hSvcQuery, pConfig, bytesNeeded, &bytesNeeded))
+                    {
+                        // SCM stores the path quoted: "C:\Program Files\...\Spectra.exe"
+                        // Strip surrounding quotes for comparison
+                        registeredPath = pConfig->lpBinaryPathName;
+                        if (registeredPath.size() >= 2 &&
+                            registeredPath.front() == L'"' && registeredPath.back() == L'"')
+                        {
+                            registeredPath = registeredPath.substr(1, registeredPath.size() - 2);
+                        }
+                    }
+                }
+                CloseServiceHandle(hSvcQuery);
+            }
+            CloseServiceHandle(hSCMQuery);
+        }
+
+        // If the service is registered, enforce path check.
+        // If the service doesn't exist (already deleted), allow the run for artifact cleanup.
+        if (!registeredPath.empty())
+        {
+            if (_wcsicmp(currentExePath, registeredPath.c_str()) != 0)
+            {
+                LogError("[-] ==========================================================");
+                LogError("[-] Uninstallation denied: must run from the installed location");
+                LogError("[-] Expected: " + WideToUtf8(registeredPath));
+                LogError("[-] Actual:   " + WideToUtf8(currentExePath));
+                LogError("[-] ==========================================================");
+                LogError("[!] Run: \"" + WideToUtf8(registeredPath) + "\" /uninstall");
+                return false;
+            }
+        }
+    }
+
+    LogError("[+] ==========================================================");
+    LogError("[+] Uninstalling " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
+    LogError("[+] ==========================================================");
+
+    bool serviceRemoved = false;
 
     SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCManager)
     {
         DWORD error = GetLastError();
-        LogError("[-] Failed to open Service Control Manager, error: " + std::to_string(error));
+        LogError("[-] Failed to open Service Control Manager, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
+        LogError("[-] Please run as Administrator");
         return false;
     }
 
-    SC_HANDLE hService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, 
-                                       SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE);
-    if (!hService)
+    // Phase 1: Remove tamper protection FIRST.
+    // The DENY ACE on DELETE|SERVICE_CHANGE_CONFIG prevents OpenServiceW with DELETE.
+    // Administrators ARE allowed WRITE_DAC (not blocked by the DENY), so we open
+    // with that access right to replace the restrictive DACL before attempting deletion.
+    SC_HANDLE hServiceDacl = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, WRITE_DAC);
+    if (!hServiceDacl)
     {
         DWORD error = GetLastError();
         if (error == ERROR_SERVICE_DOES_NOT_EXIST)
         {
-            LogError("[!] Service is not installed");
+            LogError("[!] Service is not registered with SCM - skipping service removal");
+            CloseServiceHandle(hSCManager);
+            // Still clean up files, directories, and registry
+            RemoveAllArtifacts();
+            LogError("[+] ==========================================================");
+            LogError("[+] Artifact cleanup completed.");
+            LogError("[+] ==========================================================");
+            return true;
         }
-        else
-        {
-            LogError("[-] Failed to open service, error: " + std::to_string(error));
-        }
+        LogError("[-] Failed to open service for DACL modification, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
         CloseServiceHandle(hSCManager);
         return false;
     }
 
-    // Stop the service if it's running
-    SERVICE_STATUS ss = {};
-    if (QueryServiceStatus(hService, &ss))
+    LogError("[+] Removing tamper protection...");
+    if (!ServiceTamperProtection::RemoveTamperProtection(hServiceDacl))
     {
-        if (ss.dwCurrentState != SERVICE_STOPPED)
-        {
-            LogError("[+] Stopping service...");
-            if (ControlService(hService, SERVICE_CONTROL_STOP, &ss))
-            {
-                // Wait for service to stop
-                for (int i = 0; i < 30; i++)
-                {
-                    if (!QueryServiceStatus(hService, &ss))
-                        break;
-                    
-                    if (ss.dwCurrentState == SERVICE_STOPPED)
-                        break;
-                    
-                    Sleep(1000);
-                }
+        LogError("[-] WARNING: Failed to remove tamper protection - deletion may fail");
+    }
+    CloseServiceHandle(hServiceDacl);
 
-                if (ss.dwCurrentState == SERVICE_STOPPED)
+    // Phase 2: Re-open with the access rights needed to stop and delete.
+    // The DENY ACE has been removed, so DELETE is now permitted for Administrators.
+    {
+        SC_HANDLE hService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME,
+                                           SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE);
+        if (!hService)
+        {
+            DWORD error = GetLastError();
+            LogError("[-] Failed to open service for deletion, error: " + std::to_string(error) +
+                     " - " + GetWindowsErrorMessage(error));
+            CloseServiceHandle(hSCManager);
+            return false;
+        }
+
+        // Stop the service if it's running
+        SERVICE_STATUS ss = {};
+        if (QueryServiceStatus(hService, &ss))
+        {
+            if (ss.dwCurrentState != SERVICE_STOPPED)
+            {
+                LogError("[+] Stopping service...");
+                if (ControlService(hService, SERVICE_CONTROL_STOP, &ss))
                 {
-                    LogError("[+] Service stopped successfully");
+                    // Wait for service to stop (up to 30 seconds)
+                    for (int i = 0; i < 30; i++)
+                    {
+                        if (!QueryServiceStatus(hService, &ss))
+                            break;
+
+                        if (ss.dwCurrentState == SERVICE_STOPPED)
+                            break;
+
+                        Sleep(1000);
+                    }
+
+                    if (ss.dwCurrentState == SERVICE_STOPPED)
+                    {
+                        LogError("[+] Service stopped successfully");
+                    }
+                    else
+                    {
+                        LogError("[-] WARNING: Service did not stop within 30 seconds");
+                    }
                 }
                 else
                 {
-                    LogError("[-] WARNING: Service did not stop in time");
+                    DWORD error = GetLastError();
+                    if (error == ERROR_SERVICE_NOT_ACTIVE)
+                    {
+                        LogError("[+] Service was already stopped");
+                    }
+                    else
+                    {
+                        LogError("[-] WARNING: Failed to stop service, error: " + std::to_string(error));
+                    }
                 }
+            }
+            else
+            {
+                LogError("[+] Service is already stopped");
+            }
+        }
+
+        // Delete the service from SCM.
+        // This also removes HKLM\SYSTEM\CurrentControlSet\Services\PanoptesSpectra
+        // (SCM owns that key and deletes it automatically).
+        if (DeleteService(hService))
+        {
+            LogError("[+] Service deleted from Service Control Manager");
+            serviceRemoved = true;
+        }
+        else
+        {
+            DWORD error = GetLastError();
+            LogError("[-] DeleteService failed, error: " + std::to_string(error) +
+                     " - " + GetWindowsErrorMessage(error));
+        }
+
+        // Wait for the service process to fully exit.
+        // After ControlService(STOP) + DeleteService, the SCM marks the service for
+        // deletion but the process may still be winding down. We must wait for it to
+        // exit so the executable file handle is released before attempting file cleanup.
+        if (serviceRemoved)
+        {
+            LogError("[+] Waiting for service process to exit...");
+            for (int i = 0; i < 30; i++)
+            {
+                SERVICE_STATUS_PROCESS ssp = {};
+                DWORD bytesNeeded = 0;
+                if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO,
+                                          reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp),
+                                          &bytesNeeded))
+                {
+                    break; // Service handle no longer valid, process is gone
+                }
+
+                if (ssp.dwCurrentState == SERVICE_STOPPED && ssp.dwProcessId == 0)
+                {
+                    LogError("[+] Service process has exited");
+                    break;
+                }
+
+                Sleep(1000);
+            }
+        }
+
+        CloseServiceHandle(hService);
+    }
+
+    CloseServiceHandle(hSCManager);
+
+    if (!serviceRemoved)
+    {
+        LogError("[-] Service could not be deleted - aborting artifact cleanup");
+        return false;
+    }
+
+    // Phase 3: Remove all Spectra artifacts from the system.
+    // Log final messages BEFORE artifact removal, because RemoveAllArtifacts() deletes
+    // the ProgramData log directory as its last step — no LogError() calls after that.
+    LogError("[+] ==========================================================");
+    LogError("[+] Removing all Panoptes Spectra artifacts...");
+    LogError("[!] If any files are locked, they will be removed on next reboot.");
+    LogError("[+] ==========================================================");
+
+    RemoveAllArtifacts();
+
+    // NOTE: Do NOT call LogError() here — the log directory has been deleted.
+
+    return true;
+}
+
+// Remove all Spectra artifacts: installed executable, registry keys, data directories.
+// Called after the service has been deleted from SCM.
+//
+// Artifacts removed:
+//   - C:\Program Files\Panoptes\          (installed executable and directory tree)
+//   - C:\ProgramData\Panoptes\            (output, logs, config, temp data)
+//   - HKLM\SOFTWARE\Panoptes\             (Machine ID, configuration values)
+//
+// ORDERING: ProgramData is deleted LAST because the uninstaller's own LogError() calls
+// write to C:\ProgramData\Panoptes\Spectra\Logs\spectra_log.txt. If we delete that
+// directory first, subsequent LogError() calls recreate the file, causing RemoveDirectoryW
+// to fail with ERROR_DIR_NOT_EMPTY. By deleting ProgramData last and avoiding LogError()
+// calls after it, we ensure clean removal.
+//
+// Note: HKLM\SYSTEM\CurrentControlSet\Services\PanoptesSpectra is automatically
+// removed by SCM when DeleteService() succeeds - we do NOT touch it manually.
+void ServiceInstaller::RemoveAllArtifacts()
+{
+    LogError("[+] Removing Spectra artifacts...");
+
+    // 1. Remove installed executable and Program Files directory tree
+    {
+        std::wstring installDir = L"C:\\Program Files\\Panoptes";
+        if (DeleteDirectoryRecursive(installDir))
+        {
+            LogError("[+] Removed installation directory: " + WideToUtf8(installDir));
+        }
+        else
+        {
+            DWORD attribs = GetFileAttributesW(installDir.c_str());
+            if (attribs == INVALID_FILE_ATTRIBUTES)
+            {
+                LogError("[!] Installation directory not found (already removed)");
+            }
+            else
+            {
+                LogError("[-] WARNING: Could not fully remove: " + WideToUtf8(installDir));
+                LogError("[!] Locked files scheduled for deletion on reboot.");
             }
         }
     }
 
-    // Remove tamper protection to allow deletion
-    ServiceTamperProtection::RemoveTamperProtection(hService);
-
-    // Delete the service
-    if (!DeleteService(hService))
+    // 2. Remove application registry key: HKLM\SOFTWARE\Panoptes
     {
-        DWORD error = GetLastError();
-        LogError("[-] DeleteService failed, error: " + std::to_string(error));
-        CloseServiceHandle(hService);
-        CloseServiceHandle(hSCManager);
+        LONG result = RegDeleteTreeW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Panoptes");
+        if (result == ERROR_SUCCESS)
+        {
+            // RegDeleteTreeW deletes all subkeys and values but not the key itself
+            RegDeleteKeyW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Panoptes");
+            LogError("[+] Removed registry key: HKLM\\SOFTWARE\\Panoptes");
+        }
+        else if (result == ERROR_FILE_NOT_FOUND)
+        {
+            LogError("[!] Registry key HKLM\\SOFTWARE\\Panoptes not found (already removed)");
+        }
+        else
+        {
+            LogError("[-] WARNING: Failed to delete HKLM\\SOFTWARE\\Panoptes, error: " +
+                     std::to_string(result) + " - " + GetWindowsErrorMessage(result));
+        }
+    }
+
+    // 3. Remove runtime data directory tree: C:\ProgramData\Panoptes
+    //
+    // IMPORTANT: This MUST be the last cleanup step. LogError() writes to
+    // C:\ProgramData\Panoptes\Spectra\Logs\spectra_log.txt on every call.
+    // After deleting this directory, do NOT call LogError() because it would
+    // recreate the log file (LogError opens/writes/closes per call). The final
+    // success/failure messages are logged by the caller BEFORE this point.
+    LogError("[+] Removing data directory (final step - no further log entries)...");
+    {
+        std::wstring dataDir = L"C:\\ProgramData\\Panoptes";
+        if (!DeleteDirectoryRecursive(dataDir))
+        {
+            DWORD attribs = GetFileAttributesW(dataDir.c_str());
+            if (attribs != INVALID_FILE_ATTRIBUTES)
+            {
+                // Cannot call LogError here - it would recreate files in the directory.
+                // Schedule the entire tree for reboot deletion as a fallback.
+                MoveFileExW(dataDir.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+            }
+        }
+    }
+}
+
+// Recursively delete a directory and all its contents (files and subdirectories).
+// Returns true if the directory was fully removed, false if any part remains.
+//
+// SECURITY: Only operates on paths that are actual directories (not reparse points).
+// Validates each path before deletion to prevent symlink-based attacks.
+bool ServiceInstaller::DeleteDirectoryRecursive(const std::wstring& directoryPath)
+{
+    if (directoryPath.empty())
+        return false;
+
+    DWORD attribs = GetFileAttributesW(directoryPath.c_str());
+    if (attribs == INVALID_FILE_ATTRIBUTES)
+        return true; // Already gone
+
+    if (!(attribs & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        LogError("[-] Path is not a directory: " + WideToUtf8(directoryPath));
         return false;
     }
 
-    CloseServiceHandle(hService);
-    CloseServiceHandle(hSCManager);
+    // SECURITY: Do not follow reparse points (symlinks/junctions) to prevent
+    // an attacker from tricking the uninstaller into deleting unrelated files.
+    if (attribs & FILE_ATTRIBUTE_REPARSE_POINT)
+    {
+        LogError("[-] SECURITY: Refusing to delete reparse point: " + WideToUtf8(directoryPath));
+        return false;
+    }
 
-    LogError("[+] Service uninstalled successfully");
-    LogError("[!] Note: Runtime data in " + WideToUtf8(ServiceConfig::OUTPUT_DIRECTORY) + " was not removed");
-    LogError("[!] To remove all data, manually delete: C:\\ProgramData\\Panoptes");
+    bool allSuccess = true;
+    std::wstring searchPattern = directoryPath + L"\\*";
+    WIN32_FIND_DATAW findData = {};
+    HANDLE hFind = FindFirstFileW(searchPattern.c_str(), &findData);
 
-    return true;
+    if (hFind != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            // Skip . and ..
+            if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0)
+                continue;
+
+            std::wstring childPath = directoryPath + L"\\" + findData.cFileName;
+
+            if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                // Skip reparse points in subdirectories too
+                if (findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                {
+                    LogError("[-] SECURITY: Skipping reparse point: " + WideToUtf8(childPath));
+                    allSuccess = false;
+                    continue;
+                }
+
+                // Recurse into subdirectory
+                if (!DeleteDirectoryRecursive(childPath))
+                {
+                    allSuccess = false;
+                }
+            }
+            else
+            {
+                // Remove read-only attribute if set (common on installed executables)
+                if (findData.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
+                {
+                    SetFileAttributesW(childPath.c_str(),
+                                       findData.dwFileAttributes & ~FILE_ATTRIBUTE_READONLY);
+                }
+
+                if (!DeleteFileW(childPath.c_str()))
+                {
+                    DWORD deleteError = GetLastError();
+                    // If the file is locked (e.g., the running uninstaller executable),
+                    // schedule it for deletion on next reboot.
+                    if (deleteError == ERROR_ACCESS_DENIED || deleteError == ERROR_SHARING_VIOLATION)
+                    {
+                        if (MoveFileExW(childPath.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT))
+                        {
+                            LogError("[!] File locked, scheduled for deletion on reboot: " + WideToUtf8(childPath));
+                        }
+                        else
+                        {
+                            LogError("[-] Failed to schedule reboot delete: " + WideToUtf8(childPath) +
+                                     ", error: " + std::to_string(GetLastError()));
+                            allSuccess = false;
+                        }
+                    }
+                    else
+                    {
+                        LogError("[-] Failed to delete file: " + WideToUtf8(childPath) +
+                                 ", error: " + std::to_string(deleteError));
+                        allSuccess = false;
+                    }
+                }
+            }
+        } while (FindNextFileW(hFind, &findData));
+
+        FindClose(hFind);
+    }
+
+    // Remove the now-empty directory
+    if (!RemoveDirectoryW(directoryPath.c_str()))
+    {
+        DWORD dirError = GetLastError();
+        // Directory may not be empty if it contains files scheduled for reboot deletion.
+        // Schedule the directory itself for reboot deletion too.
+        if (dirError == ERROR_DIR_NOT_EMPTY || dirError == ERROR_ACCESS_DENIED)
+        {
+            if (MoveFileExW(directoryPath.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT))
+            {
+                LogError("[!] Directory not empty (locked files), scheduled for deletion on reboot: " +
+                         WideToUtf8(directoryPath));
+            }
+            else
+            {
+                LogError("[-] Failed to schedule reboot delete for directory: " + WideToUtf8(directoryPath) +
+                         ", error: " + std::to_string(GetLastError()));
+                allSuccess = false;
+            }
+        }
+        else
+        {
+            LogError("[-] Failed to remove directory: " + WideToUtf8(directoryPath) +
+                     ", error: " + std::to_string(dirError));
+            allSuccess = false;
+        }
+    }
+
+    return allSuccess;
 }
 
 // Get the quoted executable path (protects against unquoted service path attacks)
@@ -296,7 +680,7 @@ std::wstring ServiceInstaller::GetQuotedExecutablePath()
 {
     WCHAR exePath[MAX_PATH] = {};
     DWORD pathLen = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-    
+
     if (pathLen == 0 || pathLen >= MAX_PATH)
     {
         LogError("[-] GetModuleFileName failed");
@@ -332,7 +716,7 @@ std::wstring ServiceInstaller::CopyExecutableToInstallLocation()
 
     // Define installation directory
     std::wstring installDir = L"C:\\Program Files\\Panoptes\\Spectra";
-    
+
     // Create installation directory
     int result = SHCreateDirectoryExW(nullptr, installDir.c_str(), nullptr);
     if (result != ERROR_SUCCESS && result != ERROR_ALREADY_EXISTS)
@@ -476,7 +860,7 @@ bool ServiceInstaller::CreateSecureDirectories()
         }
         else
         {
-            LogError("[-] Failed to create directory: " + WideToUtf8(dir) + 
+            LogError("[-] Failed to create directory: " + WideToUtf8(dir) +
                      ", error: " + std::to_string(result));
             allSuccess = false;
         }
@@ -544,7 +928,6 @@ bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
     }
 
     // Build the service trustee name: "NT SERVICE\PanoptesSpectra"
-    // SetEntriesInAclW resolves this to the per-service SID at call time.
     std::wstring serviceTrustee = L"NT SERVICE\\";
     serviceTrustee += ServiceConfig::SERVICE_NAME;
 
@@ -568,9 +951,6 @@ bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
     ea[1].Trustee.ptstrName = reinterpret_cast<LPWSTR>(pAdminSid.get());
 
     // ACE 2: Service SID - Modify (NOT Full Control), inherited to sub-containers and objects
-    // Modify = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE
-    // This intentionally excludes WRITE_DAC and WRITE_OWNER to prevent a compromised
-    // service from modifying its own directory permissions.
     ea[2].grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
     ea[2].grfAccessMode = SET_ACCESS;
     ea[2].grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
@@ -596,8 +976,7 @@ bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
     LocalUniquePtr<ACL> aclGuard(pAcl);
 
     // Apply the DACL to the directory.
-    // PROTECTED_DACL_SECURITY_INFORMATION prevents inheriting ACEs from parent directories,
-    // ensuring our explicit ACL is the sole authority on permissions for this directory tree.
+    // PROTECTED_DACL_SECURITY_INFORMATION prevents inheriting ACEs from parent directories.
     dwResult = SetNamedSecurityInfoW(
         const_cast<LPWSTR>(directoryPath.c_str()),
         SE_FILE_OBJECT,
@@ -628,11 +1007,8 @@ bool ServiceInstaller::ApplyDirectoryAcl(const std::wstring& directoryPath)
 // SECURITY DECISIONS:
 //   - Merges with existing DACL rather than replacing, so SYSTEM and Administrators
 //     retain their default HKLM permissions.
-//   - Service SID gets KEY_READ | KEY_WRITE, NOT KEY_ALL_ACCESS. This excludes
-//     WRITE_DAC and WRITE_OWNER to prevent a compromised service from modifying
-//     the key's ACL or taking ownership.
-//   - Uses SUB_CONTAINERS_AND_OBJECTS_INHERIT so subkeys created by the service
-//     also inherit the service SID ACE.
+//   - Service SID gets KEY_READ | KEY_WRITE, NOT KEY_ALL_ACCESS.
+//   - Uses SUB_CONTAINERS_AND_OBJECTS_INHERIT so subkeys inherit the service SID ACE.
 //   - Must be called AFTER CreateServiceW so the service SID exists.
 bool ServiceInstaller::ApplyRegistryKeyAcl()
 {
@@ -641,8 +1017,6 @@ bool ServiceInstaller::ApplyRegistryKeyAcl()
     serviceTrustee += ServiceConfig::SERVICE_NAME;
 
     // Create a single EXPLICIT_ACCESS entry for the service SID.
-    // We merge this into the existing DACL so SYSTEM/Administrators keep their
-    // default HKLM permissions. Replacing the DACL entirely would strip those.
     EXPLICIT_ACCESSW ea = {};
     ea.grfAccessPermissions = KEY_READ | KEY_WRITE;
     ea.grfAccessMode = GRANT_ACCESS;
@@ -740,7 +1114,7 @@ bool ServiceInstaller::CreateRegistryConfiguration()
 {
     HKEY hKey = nullptr;
     DWORD disposition = 0;
-    
+
     // Create or open the registry key
     LONG result = RegCreateKeyExW(
         HKEY_LOCAL_MACHINE,
@@ -773,8 +1147,8 @@ bool ServiceInstaller::CreateRegistryConfiguration()
 
     // Set default collection interval (24 hours)
     DWORD collectionInterval = ServiceConfig::DEFAULT_COLLECTION_INTERVAL_SECONDS;
-    result = RegSetValueExW(hKey, ServiceConfig::REG_COLLECTION_INTERVAL, 0, REG_DWORD, 
-                           (const BYTE*)&collectionInterval, sizeof(DWORD));
+    result = RegSetValueExW(hKey, ServiceConfig::REG_COLLECTION_INTERVAL, 0, REG_DWORD,
+                           reinterpret_cast<const BYTE*>(&collectionInterval), sizeof(DWORD));
     if (result != ERROR_SUCCESS)
     {
         LogError("[-] Failed to set CollectionIntervalSeconds, error: " + std::to_string(result));
@@ -782,14 +1156,14 @@ bool ServiceInstaller::CreateRegistryConfiguration()
     }
     else
     {
-        LogError("[+] Set CollectionIntervalSeconds: " + std::to_string(collectionInterval) + 
+        LogError("[+] Set CollectionIntervalSeconds: " + std::to_string(collectionInterval) +
                  " seconds (" + std::to_string(collectionInterval / 3600) + " hours)");
     }
 
     // Set output directory
     std::wstring outputDir = ServiceConfig::DEFAULT_OUTPUT_DIRECTORY;
-    result = RegSetValueExW(hKey, ServiceConfig::REG_OUTPUT_DIRECTORY, 0, REG_SZ, 
-                           (const BYTE*)outputDir.c_str(), 
+    result = RegSetValueExW(hKey, ServiceConfig::REG_OUTPUT_DIRECTORY, 0, REG_SZ,
+                           reinterpret_cast<const BYTE*>(outputDir.c_str()),
                            static_cast<DWORD>((outputDir.length() + 1) * sizeof(wchar_t)));
     if (result != ERROR_SUCCESS)
     {
@@ -803,8 +1177,8 @@ bool ServiceInstaller::CreateRegistryConfiguration()
 
     // Set detailed logging (disabled by default)
     DWORD enableLogging = 0;
-    result = RegSetValueExW(hKey, ServiceConfig::REG_ENABLE_DETAILED_LOGGING, 0, REG_DWORD, 
-                           (const BYTE*)&enableLogging, sizeof(DWORD));
+    result = RegSetValueExW(hKey, ServiceConfig::REG_ENABLE_DETAILED_LOGGING, 0, REG_DWORD,
+                           reinterpret_cast<const BYTE*>(&enableLogging), sizeof(DWORD));
     if (result != ERROR_SUCCESS)
     {
         LogError("[-] Failed to set EnableDetailedLogging, error: " + std::to_string(result));
@@ -817,8 +1191,8 @@ bool ServiceInstaller::CreateRegistryConfiguration()
 
     // Set server URL (empty by default - for future use)
     std::wstring serverUrl = L"";
-    result = RegSetValueExW(hKey, ServiceConfig::REG_SERVER_URL, 0, REG_SZ, 
-                           (const BYTE*)serverUrl.c_str(), 
+    result = RegSetValueExW(hKey, ServiceConfig::REG_SERVER_URL, 0, REG_SZ,
+                           reinterpret_cast<const BYTE*>(serverUrl.c_str()),
                            static_cast<DWORD>((serverUrl.length() + 1) * sizeof(wchar_t)));
     if (result != ERROR_SUCCESS)
     {
@@ -831,12 +1205,12 @@ bool ServiceInstaller::CreateRegistryConfiguration()
     }
 
     RegCloseKey(hKey);
-    
+
     if (allSuccess)
     {
         LogError("[+] Registry configuration completed successfully");
     }
-    
+
     return allSuccess;
 }
 

@@ -11,7 +11,7 @@ public:
     // Install the service with full security hardening
     static bool InstallService();
     
-    // Uninstall the service cleanly
+    // Uninstall the service and remove all installation artifacts
     static bool UninstallService();
     
 private:
@@ -43,4 +43,10 @@ private:
     
     // Verify service is installed correctly
     static bool VerifyInstallation(SC_HANDLE hService);
+
+    // Remove all Spectra artifacts: executable, registry keys, data directories
+    static void RemoveAllArtifacts();
+
+    // Helper: Recursively delete a directory and all its contents
+    static bool DeleteDirectoryRecursive(const std::wstring& directoryPath);
 };
