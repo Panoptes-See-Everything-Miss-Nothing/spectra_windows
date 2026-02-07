@@ -348,39 +348,19 @@ void ServiceMain::PerformDataCollection()
         // Get output directory from configuration
         std::wstring outputDir = ServiceConfig::GetOutputDirectory();
 
-        // Create timestamped filename
-        auto now = std::chrono::system_clock::now();
-        auto time = std::chrono::system_clock::to_time_t(now);
-        struct tm timeinfo;
-        
-        if (localtime_s(&timeinfo, &time) == 0)
+        // Write to a single inventory file, overwriting previous content.
+        // Only one file is maintained at any given time.
+        std::wstring outputFile = outputDir + L"\\inventory.json";
+        std::ofstream outFile(outputFile, std::ios::out | std::ios::trunc);
+        if (outFile.is_open())
         {
-            std::wstringstream filename;
-            filename << outputDir << L"\\inventory_"
-                    << std::put_time(&timeinfo, L"%Y%m%d_%H%M%S") << L".json";
-
-            // Write to timestamped file
-            std::ofstream outFile(filename.str(), std::ios::out | std::ios::trunc);
-            if (outFile.is_open())
-            {
-                outFile << jsonData;
-                outFile.close();
-                LogError("[+] JSON written to: " + WideToUtf8(filename.str()));
-            }
-            else
-            {
-                LogError("[-] Failed to write JSON file: " + WideToUtf8(filename.str()));
-            }
-
-            // Also write to "latest" file for easy access
-            std::wstring latestFile = outputDir + L"\\inventory_latest.json";
-            std::ofstream latestOut(latestFile, std::ios::out | std::ios::trunc);
-            if (latestOut.is_open())
-            {
-                latestOut << jsonData;
-                latestOut.close();
-                LogError("[+] Latest inventory: " + WideToUtf8(latestFile));
-            }
+            outFile << jsonData;
+            outFile.close();
+            LogError("[+] JSON written to: " + WideToUtf8(outputFile));
+        }
+        else
+        {
+            LogError("[-] Failed to write JSON file: " + WideToUtf8(outputFile));
         }
 
         LogError("[+] Data collection completed successfully");
