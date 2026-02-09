@@ -8,11 +8,16 @@
 class ServiceInstaller
 {
 public:
-    // Install the service with full security hardening
+    // Install the service with full security hardening.
+    // If the service already exists, automatically performs an in-place upgrade.
     static bool InstallService();
     
     // Uninstall the service and remove all installation artifacts
     static bool UninstallService();
+    
+    // Upgrade the service in-place: replace binary, re-apply hardening,
+    // preserve all state (Machine ID, registry config, directories, ACLs, logs)
+    static bool UpgradeService();
     
 private:
     // Copy executable to Program Files installation directory
@@ -49,4 +54,12 @@ private:
 
     // Helper: Recursively delete a directory and all its contents
     static bool DeleteDirectoryRecursive(const std::wstring& directoryPath);
+
+    // Helper: Stop a running service and wait for it to fully stop.
+    // Returns true if the service is stopped (or was already stopped).
+    static bool StopServiceAndWait(SC_HANDLE hService, DWORD timeoutSeconds);
+
+    // Helper: Wait for service process to exit after stop/delete.
+    // Ensures the executable file handle is released.
+    static void WaitForServiceProcessExit(SC_HANDLE hService, DWORD timeoutSeconds);
 };

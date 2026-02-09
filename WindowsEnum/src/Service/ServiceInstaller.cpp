@@ -17,14 +17,119 @@ struct LocalFreeDeleter {
 template <typename T>
 using LocalUniquePtr = std::unique_ptr<T, LocalFreeDeleter>;
 
-// Install the service with full security hardening
+// Helper: Stop a running service and wait for it to fully stop.
+// Returns true if the service is stopped (or was already stopped).
+bool ServiceInstaller::StopServiceAndWait(SC_HANDLE hService, DWORD timeoutSeconds)
+{
+    SERVICE_STATUS ss = {};
+    if (!QueryServiceStatus(hService, &ss))
+    {
+        LogError("[-] Failed to query service status, error: " + std::to_string(GetLastError()));
+        return false;
+    }
+
+    if (ss.dwCurrentState == SERVICE_STOPPED)
+    {
+        LogError("[+] Service is already stopped");
+        return true;
+    }
+
+    LogError("[+] Stopping service...");
+    if (!ControlService(hService, SERVICE_CONTROL_STOP, &ss))
+    {
+        DWORD error = GetLastError();
+        if (error == ERROR_SERVICE_NOT_ACTIVE)
+        {
+            LogError("[+] Service was already stopped");
+            return true;
+        }
+        LogError("[-] Failed to stop service, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
+        return false;
+    }
+
+    for (DWORD i = 0; i < timeoutSeconds; i++)
+    {
+        if (!QueryServiceStatus(hService, &ss))
+            break;
+
+        if (ss.dwCurrentState == SERVICE_STOPPED)
+        {
+            LogError("[+] Service stopped successfully");
+            return true;
+        }
+
+        Sleep(1000);
+    }
+
+    if (ss.dwCurrentState == SERVICE_STOPPED)
+        return true;
+
+    LogError("[-] Service did not stop within " + std::to_string(timeoutSeconds) + " seconds");
+    return false;
+}
+
+// Helper: Wait for service process to exit after stop/delete.
+// Ensures the executable file handle is released before file operations.
+void ServiceInstaller::WaitForServiceProcessExit(SC_HANDLE hService, DWORD timeoutSeconds)
+{
+    LogError("[+] Waiting for service process to exit...");
+    for (DWORD i = 0; i < timeoutSeconds; i++)
+    {
+        SERVICE_STATUS_PROCESS ssp = {};
+        DWORD bytesNeeded = 0;
+        if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO,
+                                  reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp),
+                                  &bytesNeeded))
+        {
+            break; // Service handle no longer valid, process is gone
+        }
+
+        if (ssp.dwCurrentState == SERVICE_STOPPED && ssp.dwProcessId == 0)
+        {
+            LogError("[+] Service process has exited");
+            return;
+        }
+
+        Sleep(1000);
+    }
+
+    LogError("[!] Timed out waiting for service process to exit");
+}
+
+// Install the service with full security hardening.
+// If the service already exists, automatically redirects to UpgradeService().
+//
+// CRITICAL: The service-existence check MUST happen before any side effects
+// (file copies, directory creation, registry writes) to avoid destroying
+// user-customized configuration on upgrade redirect.
 bool ServiceInstaller::InstallService()
 {
     LogError("[+] ==========================================================");
     LogError("[+] Installing " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
     LogError("[+] ==========================================================");
 
-    // Step 1: Copy executable to Program Files
+    // Step 1: Check if service already exists BEFORE any side effects.
+    // If it exists, redirect to UpgradeService() which preserves all state.
+    // This MUST be first to prevent CreateRegistryConfiguration() from
+    // overwriting user-customized values (collection interval, output dir, etc.)
+    {
+        SC_HANDLE hSCMCheck = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+        if (hSCMCheck)
+        {
+            SC_HANDLE hExisting = OpenServiceW(hSCMCheck, ServiceConfig::SERVICE_NAME, SERVICE_QUERY_STATUS);
+            if (hExisting)
+            {
+                LogError("[!] Service already exists - performing in-place upgrade");
+                CloseServiceHandle(hExisting);
+                CloseServiceHandle(hSCMCheck);
+                return UpgradeService();
+            }
+            CloseServiceHandle(hSCMCheck);
+        }
+    }
+
+    // Step 2: Copy executable to Program Files
     std::wstring installedExePath = CopyExecutableToInstallLocation();
     if (installedExePath.empty())
     {
@@ -35,7 +140,7 @@ bool ServiceInstaller::InstallService()
 
     LogError("[+] Executable installed to: " + WideToUtf8(installedExePath));
 
-    // Step 2: Create directory structure (directories only, ACLs applied later)
+    // Step 3: Create directory structure (directories only, ACLs applied later)
     // ACLs cannot be applied yet because the service SID (NT SERVICE\PanoptesSpectra)
     // does not exist until CreateServiceW registers it with SCM.
     if (!CreateSecureDirectories())
@@ -45,7 +150,9 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
-    // Step 2.5: Create registry configuration with default values
+    // Step 4: Create registry configuration with default values.
+    // Safe to call here because Step 1 confirmed the service does not exist,
+    // meaning this is a fresh install with no user-customized values to preserve.
     if (!CreateRegistryConfiguration())
     {
         LogError("[-] Failed to create registry configuration");
@@ -53,7 +160,7 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
-    // Step 3: Get SCM handle
+    // Step 5: Get SCM handle with full access for service creation
     SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
     if (!hSCManager)
     {
@@ -63,22 +170,11 @@ bool ServiceInstaller::InstallService()
         return false;
     }
 
-    // Step 4: Create quoted path for installed executable
+    // Step 6: Create quoted path for installed executable
     std::wstring servicePath = L"\"" + installedExePath + L"\"";
     LogError("[+] Service executable: " + WideToUtf8(servicePath));
 
-    // Step 5: Check if service already exists
-    SC_HANDLE hExistingService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, SERVICE_QUERY_STATUS);
-    if (hExistingService)
-    {
-        LogError("[!] Service already exists");
-        CloseServiceHandle(hExistingService);
-        CloseServiceHandle(hSCManager);
-        LogError("[!] To reinstall, first run: Panoptes-Spectra.exe /uninstall");
-        return false;
-    }
-
-    // Step 6: Create the service
+    // Step 7: Create the service
     // IMPORTANT: This registers the per-service SID (NT SERVICE\PanoptesSpectra)
     // with SCM, which is required before we can apply directory ACLs referencing it.
     SC_HANDLE hService = CreateServiceW(
@@ -108,7 +204,7 @@ bool ServiceInstaller::InstallService()
 
     LogError("[+] Service created successfully");
 
-    // Step 7: Set service description
+    // Step 8: Set service description
     SERVICE_DESCRIPTIONW sd = {};
     sd.lpDescription = const_cast<LPWSTR>(ServiceConfig::SERVICE_DESCRIPTION);
     if (!ChangeServiceConfig2W(hService, SERVICE_CONFIG_DESCRIPTION, &sd))
@@ -116,13 +212,13 @@ bool ServiceInstaller::InstallService()
         LogError("[-] WARNING: Failed to set service description");
     }
 
-    // Step 8: Apply service hardening (SID restriction, privileges, failure actions)
+    // Step 9: Apply service hardening (SID restriction, privileges, failure actions)
     if (!ApplyServiceHardening(hService))
     {
         LogError("[-] WARNING: Failed to apply full service hardening");
     }
 
-    // Step 9: Apply directory ACLs NOW that the service SID exists in SCM.
+    // Step 10: Apply directory ACLs NOW that the service SID exists in SCM.
     // SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token where only
     // SIDs in the restricting list can pass write-access checks. The per-service
     // SID (NT SERVICE\PanoptesSpectra) must be explicitly granted Modify access
@@ -145,7 +241,7 @@ bool ServiceInstaller::InstallService()
         }
     }
 
-    // Step 9.5: Apply registry key ACL so the restricted service token can write
+    // Step 11: Apply registry key ACL so the restricted service token can write
     // Machine ID and runtime state to HKLM\SOFTWARE\Panoptes\Spectra.
     if (!ApplyRegistryKeyAcl())
     {
@@ -153,20 +249,20 @@ bool ServiceInstaller::InstallService()
         LogError("[!] Service may fail to persist Machine ID (will regenerate each run)");
     }
 
-    // Step 10: Apply tamper protection (restrict who can control the service)
+    // Step 12: Apply tamper protection (restrict who can control the service)
     if (!ServiceTamperProtection::ApplyTamperProtectionDACL(hService))
     {
         LogError("[-] WARNING: Failed to apply tamper protection");
         LogError("[!] Service may be vulnerable to unauthorized modification");
     }
 
-    // Step 11: Verify installation
+    // Step 13: Verify installation
     if (!VerifyInstallation(hService))
     {
         LogError("[-] WARNING: Installation verification failed");
     }
 
-    // Step 12: Start the service automatically
+    // Step 14: Start the service automatically
     LogError("[+] Starting service...");
     if (!StartServiceW(hService, 0, nullptr))
     {
@@ -202,6 +298,234 @@ bool ServiceInstaller::InstallService()
     return true;
 }
 
+// Upgrade the service in-place: replace the binary while preserving all state.
+//
+// This avoids the full uninstall/reinstall cycle, keeping:
+//   - Machine ID (HKLM\SOFTWARE\Panoptes\Spectra\SpectraMachineID)
+//   - Registry configuration (collection interval, server URL, etc.)
+//   - Directory structure and ACLs
+//   - Log history
+//
+// SEQUENCE:
+//   1. Verify the service exists (fall back to fresh install if not)
+//   2. Remove tamper protection (needed for SERVICE_CHANGE_CONFIG in hardening steps)
+//   3. Stop the running service
+//   4. Wait for process to exit (release file handle on the .exe)
+//   5. Copy new binary over the installed location (same path, new content)
+//   6. Re-apply service hardening (SID, privileges, failure actions)
+//   7. Re-apply tamper protection
+//   8. Start the upgraded service
+//
+// NOTE: ChangeServiceConfigW is NOT called because the binary path does not change.
+// CopyExecutableToInstallLocation() always writes to the same fixed path under
+// Program Files, so the SCM's registered ImagePath remains valid.
+//
+// SECURITY: Requires Administrator privileges. The tamper protection DACL
+// blocks SERVICE_CHANGE_CONFIG for everyone except SYSTEM. We open with
+// WRITE_DAC first (allowed for admins), remove tamper protection, then
+// re-open with the needed access rights for ChangeServiceConfig2W calls
+// in ApplyServiceHardening().
+//
+// SECURITY NOTE: If the process crashes between tamper-protection removal (Step 3)
+// and re-application (Step 12), the service is left with a permissive DACL until
+// the next successful upgrade or manual re-application. This is acceptable because
+// Administrator privileges are already required to reach this code path, and the
+// permissive DACL only grants Administrators the same level of control they would
+// have on a default Windows service.
+bool ServiceInstaller::UpgradeService()
+{
+    LogError("[+] ==========================================================");
+    LogError("[+] Upgrading " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
+    LogError("[+] ==========================================================");
+
+    // Step 1: Open SCM
+    SC_HANDLE hSCManager = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ALL_ACCESS);
+    if (!hSCManager)
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to open Service Control Manager, error: " + std::to_string(error));
+        LogError("[-] Please run as Administrator");
+        return false;
+    }
+
+    // Step 2: Verify the service exists. If not, redirect to fresh install.
+    {
+        SC_HANDLE hServiceCheck = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, SERVICE_QUERY_STATUS);
+        if (!hServiceCheck)
+        {
+            DWORD error = GetLastError();
+            if (error == ERROR_SERVICE_DOES_NOT_EXIST)
+            {
+                LogError("[!] Service is not installed - performing fresh installation instead");
+                CloseServiceHandle(hSCManager);
+                return InstallService();
+            }
+            LogError("[-] Failed to open service, error: " + std::to_string(error) +
+                     " - " + GetWindowsErrorMessage(error));
+            CloseServiceHandle(hSCManager);
+            return false;
+        }
+        CloseServiceHandle(hServiceCheck);
+    }
+
+    // Step 3: Remove tamper protection.
+    // The tamper protection DACL does not grant SERVICE_CHANGE_CONFIG to Administrators.
+    // ApplyServiceHardening() calls ChangeServiceConfig2W which requires that right.
+    // We open with WRITE_DAC (allowed by the DACL) and replace the restrictive DACL.
+    SC_HANDLE hServiceDacl = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME, WRITE_DAC);
+    if (!hServiceDacl)
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to open service for DACL modification, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
+        CloseServiceHandle(hSCManager);
+        return false;
+    }
+
+    LogError("[+] Removing tamper protection for upgrade...");
+    if (!ServiceTamperProtection::RemoveTamperProtection(hServiceDacl))
+    {
+        LogError("[-] Failed to remove tamper protection - upgrade cannot proceed");
+        CloseServiceHandle(hServiceDacl);
+        CloseServiceHandle(hSCManager);
+        return false;
+    }
+    CloseServiceHandle(hServiceDacl);
+
+    // Step 4: Re-open with access rights needed to stop, reconfigure, and start.
+    // SERVICE_CHANGE_CONFIG is required by ChangeServiceConfig2W in ApplyServiceHardening().
+    // WRITE_DAC is required to re-apply tamper protection at the end.
+    SC_HANDLE hService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME,
+                                       SERVICE_STOP | SERVICE_START |
+                                       SERVICE_QUERY_STATUS | SERVICE_CHANGE_CONFIG |
+                                       WRITE_DAC);
+    if (!hService)
+    {
+        DWORD error = GetLastError();
+        LogError("[-] Failed to open service for upgrade, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
+        CloseServiceHandle(hSCManager);
+        return false;
+    }
+
+    // Step 5: Stop the running service
+    if (!StopServiceAndWait(hService, 30))
+    {
+        LogError("[-] Failed to stop service - upgrade cannot proceed");
+        LogError("[!] Restoring tamper protection before aborting...");
+        ServiceTamperProtection::ApplyTamperProtectionDACL(hService);
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCManager);
+        return false;
+    }
+
+    // Step 6: Wait for the service process to fully exit.
+    // The old executable file handle must be released before we can overwrite it.
+    WaitForServiceProcessExit(hService, 30);
+
+    // Step 7: Copy the new executable over the installed location.
+    // The path does not change - CopyFileW with bFailIfExists=FALSE overwrites in place.
+    // The SCM's registered ImagePath remains valid without any ChangeServiceConfigW call.
+    std::wstring installedExePath = CopyExecutableToInstallLocation();
+    if (installedExePath.empty())
+    {
+        LogError("[-] Failed to copy new executable to installation directory");
+        LogError("[!] Restoring tamper protection before aborting...");
+        ServiceTamperProtection::ApplyTamperProtectionDACL(hService);
+        CloseServiceHandle(hService);
+        CloseServiceHandle(hSCManager);
+        return false;
+    }
+
+    LogError("[+] New executable installed to: " + WideToUtf8(installedExePath));
+
+    // Step 8: Update the service description (may have changed between versions)
+    SERVICE_DESCRIPTIONW sd = {};
+    sd.lpDescription = const_cast<LPWSTR>(ServiceConfig::SERVICE_DESCRIPTION);
+    if (!ChangeServiceConfig2W(hService, SERVICE_CONFIG_DESCRIPTION, &sd))
+    {
+        LogError("[!] WARNING: Failed to update service description");
+    }
+
+    // Step 9: Re-apply service hardening (SID restriction, privileges, failure actions).
+    // A new version may declare different required privileges or change failure behavior.
+    if (!ApplyServiceHardening(hService))
+    {
+        LogError("[!] WARNING: Failed to re-apply full service hardening");
+    }
+
+    // Step 10: Ensure directory structure and ACLs are current.
+    // A new version may introduce new directories or require updated ACLs.
+    if (!CreateSecureDirectories())
+    {
+        LogError("[!] WARNING: Failed to verify directory structure");
+    }
+
+    {
+        const std::vector<std::wstring> directories = {
+            ServiceConfig::OUTPUT_DIRECTORY,
+            ServiceConfig::LOG_DIRECTORY,
+            ServiceConfig::CONFIG_DIRECTORY,
+            ServiceConfig::TEMP_DIRECTORY
+        };
+
+        for (const auto& dir : directories)
+        {
+            if (!ApplyDirectoryAcl(dir))
+            {
+                LogError("[!] WARNING: Failed to re-apply ACL to: " + WideToUtf8(dir));
+            }
+        }
+    }
+
+    // Step 11: Re-apply registry key ACL (new version may need updated permissions)
+    if (!ApplyRegistryKeyAcl())
+    {
+        LogError("[!] WARNING: Failed to re-apply registry key ACL");
+    }
+
+    // Step 12: Re-apply tamper protection
+    if (!ServiceTamperProtection::ApplyTamperProtectionDACL(hService))
+    {
+        LogError("[!] WARNING: Failed to re-apply tamper protection");
+        LogError("[!] Service may be vulnerable to unauthorized modification");
+    }
+
+    // Step 13: Start the upgraded service
+    LogError("[+] Starting upgraded service...");
+    if (!StartServiceW(hService, 0, nullptr))
+    {
+        DWORD error = GetLastError();
+        LogError("[-] WARNING: Failed to start service automatically, error: " + std::to_string(error));
+        LogError("[!] You can start it manually with: sc start " + WideToUtf8(ServiceConfig::SERVICE_NAME));
+    }
+    else
+    {
+        LogError("[+] Service started successfully!");
+
+        Sleep(2000);
+
+        SERVICE_STATUS ss = {};
+        if (QueryServiceStatus(hService, &ss) && ss.dwCurrentState == SERVICE_RUNNING)
+        {
+            LogError("[+] Service is now RUNNING");
+        }
+    }
+
+    CloseServiceHandle(hService);
+    CloseServiceHandle(hSCManager);
+
+    LogError("[+] ==========================================================");
+    LogError("[+] Upgrade completed successfully!");
+    LogError("[+] Service Name: " + WideToUtf8(ServiceConfig::SERVICE_NAME));
+    LogError("[+] Display Name: " + WideToUtf8(ServiceConfig::SERVICE_DISPLAY_NAME));
+    LogError("[+] Binary:       " + WideToUtf8(installedExePath));
+    LogError("[+] All state preserved (Machine ID, config, logs, ACLs)");
+    LogError("[+] ==========================================================");
+
+    return true;
+}
+
 // Uninstall the service and remove all installation artifacts.
 //
 // SECURITY: Requires Administrator privileges. Three barriers prevent non-admin uninstall:
@@ -209,10 +533,9 @@ bool ServiceInstaller::InstallService()
 //   2. OpenServiceW with WRITE_DAC requires admin (Users only get SERVICE_QUERY_STATUS)
 //   3. Artifact cleanup writes to HKLM, Program Files, and ProgramData (admin-only)
 //
-// The tamper protection DACL applies DENY DELETE to Everyone, which blocks even
-// administrators from opening the service with DELETE access directly. To work around
-// this, we open with WRITE_DAC first (allowed for admins), remove the DENY ACE via
-// RemoveTamperProtection(), then re-open with DELETE to perform the actual deletion.
+// The tamper protection DACL does not grant DELETE to Administrators. To work around
+// this, we open with WRITE_DAC first (allowed for admins), remove the restrictive DACL
+// via RemoveTamperProtection(), then re-open with DELETE to perform the actual deletion.
 bool ServiceInstaller::UninstallService()
 {
     // SECURITY: Only allow uninstallation from the installed executable location.
@@ -329,7 +652,7 @@ bool ServiceInstaller::UninstallService()
     CloseServiceHandle(hServiceDacl);
 
     // Phase 2: Re-open with the access rights needed to stop and delete.
-    // The DENY ACE has been removed, so DELETE is now permitted for Administrators.
+    // Now that tamper protection is removed, DELETE is permitted for Administrators.
     {
         SC_HANDLE hService = OpenServiceW(hSCManager, ServiceConfig::SERVICE_NAME,
                                            SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE);
@@ -343,52 +666,9 @@ bool ServiceInstaller::UninstallService()
         }
 
         // Stop the service if it's running
-        SERVICE_STATUS ss = {};
-        if (QueryServiceStatus(hService, &ss))
+        if (!StopServiceAndWait(hService, 30))
         {
-            if (ss.dwCurrentState != SERVICE_STOPPED)
-            {
-                LogError("[+] Stopping service...");
-                if (ControlService(hService, SERVICE_CONTROL_STOP, &ss))
-                {
-                    // Wait for service to stop (up to 30 seconds)
-                    for (int i = 0; i < 30; i++)
-                    {
-                        if (!QueryServiceStatus(hService, &ss))
-                            break;
-
-                        if (ss.dwCurrentState == SERVICE_STOPPED)
-                            break;
-
-                        Sleep(1000);
-                    }
-
-                    if (ss.dwCurrentState == SERVICE_STOPPED)
-                    {
-                        LogError("[+] Service stopped successfully");
-                    }
-                    else
-                    {
-                        LogError("[-] WARNING: Service did not stop within 30 seconds");
-                    }
-                }
-                else
-                {
-                    DWORD error = GetLastError();
-                    if (error == ERROR_SERVICE_NOT_ACTIVE)
-                    {
-                        LogError("[+] Service was already stopped");
-                    }
-                    else
-                    {
-                        LogError("[-] WARNING: Failed to stop service, error: " + std::to_string(error));
-                    }
-                }
-            }
-            else
-            {
-                LogError("[+] Service is already stopped");
-            }
+            LogError("[!] WARNING: Service may not have stopped cleanly");
         }
 
         // Delete the service from SCM.
@@ -407,31 +687,9 @@ bool ServiceInstaller::UninstallService()
         }
 
         // Wait for the service process to fully exit.
-        // After ControlService(STOP) + DeleteService, the SCM marks the service for
-        // deletion but the process may still be winding down. We must wait for it to
-        // exit so the executable file handle is released before attempting file cleanup.
         if (serviceRemoved)
         {
-            LogError("[+] Waiting for service process to exit...");
-            for (int i = 0; i < 30; i++)
-            {
-                SERVICE_STATUS_PROCESS ssp = {};
-                DWORD bytesNeeded = 0;
-                if (!QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO,
-                                          reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp),
-                                          &bytesNeeded))
-                {
-                    break; // Service handle no longer valid, process is gone
-                }
-
-                if (ssp.dwCurrentState == SERVICE_STOPPED && ssp.dwProcessId == 0)
-                {
-                    LogError("[+] Service process has exited");
-                    break;
-                }
-
-                Sleep(1000);
-            }
+            WaitForServiceProcessExit(hService, 30);
         }
 
         CloseServiceHandle(hService);
@@ -703,7 +961,9 @@ std::wstring ServiceInstaller::GetQuotedExecutablePath()
     return quotedPath;
 }
 
-// Copy executable to Program Files installation directory
+// Copy executable to Program Files installation directory.
+// If the source and target are the same file (running from installed location),
+// the copy is skipped to avoid undefined self-copy behavior.
 std::wstring ServiceInstaller::CopyExecutableToInstallLocation()
 {
     // Get current executable path
@@ -730,7 +990,16 @@ std::wstring ServiceInstaller::CopyExecutableToInstallLocation()
     // Define target path
     std::wstring targetPath = installDir + L"\\Panoptes-Spectra.exe";
 
-    // Copy executable
+    // Skip copy if source and target are the same file (running from installed location).
+    // CopyFileW behavior on self-copy is undefined on some filesystems.
+    // Case-insensitive comparison because NTFS paths are case-insensitive.
+    if (_wcsicmp(currentExePath, targetPath.c_str()) == 0)
+    {
+        LogError("[+] Already running from installed location - skipping copy");
+        return targetPath;
+    }
+
+    // Copy executable (bFailIfExists=FALSE overwrites existing file)
     if (!CopyFileW(currentExePath, targetPath.c_str(), FALSE))
     {
         DWORD error = GetLastError();

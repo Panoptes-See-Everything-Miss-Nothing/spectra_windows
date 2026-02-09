@@ -152,7 +152,8 @@ void ShowUsage()
     std::wcout << ServiceConfig::SERVICE_DISPLAY_NAME << L" v" << ServiceConfig::VERSION << L"\n";
     std::wcout << L"==========================================================\n\n";
     std::wcout << L"USAGE:\n";
-    std::wcout << L"  Spectra.exe /install    - Install Windows service\n";
+    std::wcout << L"  Spectra.exe /install    - Install service (auto-upgrades if exists)\n";
+    std::wcout << L"  Spectra.exe /upgrade    - Upgrade service in-place (preserves state)\n";
     std::wcout << L"  Spectra.exe /uninstall  - Uninstall Windows service\n";
     std::wcout << L"  Spectra.exe /console    - Run in console mode (one-time collection)\n";
     std::wcout << L"  Spectra.exe /test       - Test data collection\n";
@@ -163,6 +164,7 @@ void ShowUsage()
     std::wcout << L"  - Requires SE_BACKUP and SE_RESTORE privileges\n\n";
     std::wcout << L"EXAMPLES:\n";
     std::wcout << L"  Install:   Spectra.exe /install\n";
+    std::wcout << L"  Upgrade:   Spectra.exe /upgrade\n";
     std::wcout << L"  Start:     sc start " << ServiceConfig::SERVICE_NAME << L"\n";
     std::wcout << L"  Stop:      sc stop " << ServiceConfig::SERVICE_NAME << L"\n";
     std::wcout << L"  Uninstall: Spectra.exe /uninstall\n\n";
@@ -265,6 +267,10 @@ int wmain(int argc, wchar_t* argv[])
         else if (arg == L"/install")
         {
             return ServiceInstaller::InstallService() ? 0 : 1;
+        }
+        else if (arg == L"/upgrade")
+        {
+            return ServiceInstaller::UpgradeService() ? 0 : 1;
         }
         else if (arg == L"/uninstall")
         {
