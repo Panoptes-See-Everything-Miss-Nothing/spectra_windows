@@ -56,32 +56,81 @@ bool VSSSnapshot::CreateSnapshot(const std::wstring& volumePath)
 {
     HRESULT hr = S_OK;
 
-    // Initialize COM
-    hr = CoInitialize(nullptr);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+    // Initialize COM with retry for boot-time race condition.
+    // When the service auto-starts at boot, the VSS COM infrastructure may not
+    // be ready yet, causing CoInitializeEx or CreateVssBackupComponents to fail
+    // with E_ACCESSDENIED (0x80070005). Retrying after a short delay resolves
+    // this because the VSS service (swprv) finishes initialization within seconds.
+    //
+    // COINIT_MULTITHREADED is used instead of STA (CoInitialize default) because:
+    //   1. The worker thread has no message pump, which STA requires for marshalling
+    //   2. WinAppXPackages.cpp ComInitializer already uses MTA on the same thread
+    //   3. VSS IVssAsync::Wait() works correctly in MTA
+    constexpr DWORD MAX_COM_RETRIES = 3;
+    constexpr DWORD COM_RETRY_DELAY_MS = 10000; // 10 seconds between retries
+
+    bool comInitialized = false;
+
+    for (DWORD attempt = 1; attempt <= MAX_COM_RETRIES; attempt++)
     {
-        LogError("[-] Failed to initialize COM, HRESULT: 0x" + 
-                 std::to_string(static_cast<unsigned long>(hr)));
-        return false;
+        hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE)
+        {
+            comInitialized = (SUCCEEDED(hr));
+            break;
+        }
+
+        if (attempt < MAX_COM_RETRIES)
+        {
+            LogError("[!] COM initialization failed on attempt " + std::to_string(attempt) +
+                     "/" + std::to_string(MAX_COM_RETRIES) +
+                     ", HRESULT: 0x" + std::to_string(static_cast<unsigned long>(hr)) +
+                     " - retrying in " + std::to_string(COM_RETRY_DELAY_MS / 1000) + " seconds...");
+            Sleep(COM_RETRY_DELAY_MS);
+        }
+        else
+        {
+            LogError("[-] Failed to initialize COM after " + std::to_string(MAX_COM_RETRIES) +
+                     " attempts, HRESULT: 0x" + std::to_string(static_cast<unsigned long>(hr)));
+            return false;
+        }
     }
 
     // Enable backup privilege
     if (!EnablePrivilege(SE_BACKUP_NAME))
     {
         LogError("[-] Failed to enable SE_BACKUP_NAME privilege for VSS");
-        CoUninitialize();
+        if (comInitialized) CoUninitialize();
         return false;
     }
 
-    // Create VSS backup components
-    hr = CreateVssBackupComponents(&pImpl->pBackup);
-    if (FAILED(hr))
+    // Create VSS backup components with retry for boot-time readiness.
+    // Even if CoInitializeEx succeeds, the VSS provider service (swprv) may not
+    // be fully started yet, causing CreateVssBackupComponents to fail.
+    for (DWORD attempt = 1; attempt <= MAX_COM_RETRIES; attempt++)
     {
-        LogError("[-] Failed to create VSS backup components, HRESULT: 0x" + 
-                 std::to_string(static_cast<unsigned long>(hr)));
-        DisablePrivilege(SE_BACKUP_NAME);
-        CoUninitialize();
-        return false;
+        hr = CreateVssBackupComponents(&pImpl->pBackup);
+        if (SUCCEEDED(hr))
+        {
+            break;
+        }
+
+        if (attempt < MAX_COM_RETRIES)
+        {
+            LogError("[!] CreateVssBackupComponents failed on attempt " + std::to_string(attempt) +
+                     "/" + std::to_string(MAX_COM_RETRIES) +
+                     ", HRESULT: 0x" + std::to_string(static_cast<unsigned long>(hr)) +
+                     " - retrying in " + std::to_string(COM_RETRY_DELAY_MS / 1000) + " seconds...");
+            Sleep(COM_RETRY_DELAY_MS);
+        }
+        else
+        {
+            LogError("[-] Failed to create VSS backup components after " + std::to_string(MAX_COM_RETRIES) +
+                     " attempts, HRESULT: 0x" + std::to_string(static_cast<unsigned long>(hr)));
+            DisablePrivilege(SE_BACKUP_NAME);
+            if (comInitialized) CoUninitialize();
+            return false;
+        }
     }
 
     // Initialize for backup
