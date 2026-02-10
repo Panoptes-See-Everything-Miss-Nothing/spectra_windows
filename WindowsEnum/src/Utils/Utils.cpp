@@ -436,6 +436,10 @@ std::string GenerateJSON()
         userAppXPackages[L"SYSTEM"] = systemPackages;
     }
 
+    // Enumerate installed Windows updates (KBs) via WUA COM API
+    InstalledUpdatesCollector updatesCollector;
+    std::vector<InstalledUpdate> installedUpdates = updatesCollector.Collect();
+
     svipAddresses = GetLocalIPAddresses();
 
     // Get ISO 8601 timestamp for collection
@@ -600,7 +604,44 @@ std::string GenerateJSON()
         out << "    }";
     }
 
-    out << "\n  ]\n";
+    out << "\n  ],\n";
+
+    // Installed Windows Updates (KBs)
+    out << "  \"installedUpdates\": [\n";
+    for (size_t i = 0; i < installedUpdates.size(); ++i)
+    {
+        const auto& upd = installedUpdates[i];
+        out << "    {\n";
+        out << "      \"title\": " << JsonEscape(upd.title) << ",\n";
+        out << "      \"updateId\": " << JsonEscape(upd.updateId) << ",\n";
+        out << "      \"revisionNumber\": " << upd.revisionNumber << ",\n";
+        out << "      \"description\": " << JsonEscape(upd.description) << ",\n";
+
+        out << "      \"kbArticleIds\": [";
+        for (size_t k = 0; k < upd.kbArticleIds.size(); ++k)
+        {
+            out << JsonEscape(upd.kbArticleIds[k]);
+            if (k + 1 < upd.kbArticleIds.size()) out << ", ";
+        }
+        out << "],\n";
+
+        out << "      \"categories\": [";
+        for (size_t c = 0; c < upd.categories.size(); ++c)
+        {
+            out << JsonEscape(upd.categories[c]);
+            if (c + 1 < upd.categories.size()) out << ", ";
+        }
+        out << "],\n";
+
+        out << "      \"supportUrl\": " << JsonEscape(upd.supportUrl) << ",\n";
+        out << "      \"msrcSeverity\": " << JsonEscape(upd.msrcSeverity) << ",\n";
+        out << "      \"installedDate\": " << JsonEscape(upd.installedDate) << ",\n";
+        out << "      \"operationResultCode\": " << upd.operationResultCode << "\n";
+        out << "    }";
+        if (i + 1 < installedUpdates.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ]\n";
     out << "}\n";
 
     return out.str();
