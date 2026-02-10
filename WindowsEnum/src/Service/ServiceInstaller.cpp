@@ -999,18 +999,43 @@ std::wstring ServiceInstaller::CopyExecutableToInstallLocation()
         return targetPath;
     }
 
-    // Copy executable (bFailIfExists=FALSE overwrites existing file)
-    if (!CopyFileW(currentExePath, targetPath.c_str(), FALSE))
+    // Copy executable (bFailIfExists=FALSE overwrites existing file).
+    // Retry on ERROR_SHARING_VIOLATION because the target file may still be
+    // briefly locked after the service process exits. Windows can hold the PE
+    // image section mapped for a short period after process termination, and
+    // antivirus/EDR products may also hold a transient read lock while scanning
+    // the file. A few retries with a 1-second delay resolves this race.
+    constexpr DWORD MAX_COPY_RETRIES = 5;
+    constexpr DWORD COPY_RETRY_DELAY_MS = 1000;
+
+    for (DWORD attempt = 1; attempt <= MAX_COPY_RETRIES; ++attempt)
     {
+        if (CopyFileW(currentExePath, targetPath.c_str(), FALSE))
+        {
+            LogError("[+] Executable copied successfully");
+            return targetPath;
+        }
+
         DWORD error = GetLastError();
-        LogError("[-] Failed to copy executable, error: " + std::to_string(error));
+
+        if (error == ERROR_SHARING_VIOLATION && attempt < MAX_COPY_RETRIES)
+        {
+            LogError("[!] File is locked (ERROR_SHARING_VIOLATION), retry " +
+                     std::to_string(attempt) + "/" + std::to_string(MAX_COPY_RETRIES) +
+                     " in " + std::to_string(COPY_RETRY_DELAY_MS / 1000) + "s...");
+            Sleep(COPY_RETRY_DELAY_MS);
+            continue;
+        }
+
+        LogError("[-] Failed to copy executable, error: " + std::to_string(error) +
+                 " - " + GetWindowsErrorMessage(error));
         LogError("[-] Source: " + WideToUtf8(currentExePath));
         LogError("[-] Target: " + WideToUtf8(targetPath));
         return L"";
     }
 
-    LogError("[+] Executable copied successfully");
-    return targetPath;
+    // Should not reach here, but handle defensively
+    return L"";
 }
 
 // Apply service hardening (SID restriction, required privileges, failure actions)
