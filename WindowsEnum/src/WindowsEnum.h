@@ -11,3 +11,4 @@
 #include "AppXPackages.h"
 #include "PrivMgmt.h"
 #include "InstalledUpdates.h"
+#include "OsVersionInfo.h"

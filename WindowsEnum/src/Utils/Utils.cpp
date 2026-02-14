@@ -440,6 +440,9 @@ std::string GenerateJSON()
     InstalledUpdatesCollector updatesCollector;
     std::vector<InstalledUpdate> installedUpdates = updatesCollector.Collect();
 
+    // Collect OS version info (ntoskrnl.exe file version, architecture, OS name)
+    OsVersionInfo osVersionInfo = GetOsVersionInfo();
+
     svipAddresses = GetLocalIPAddresses();
 
     // Get ISO 8601 timestamp for collection
@@ -606,18 +609,29 @@ std::string GenerateJSON()
 
     out << "\n  ],\n";
 
-    // Installed Windows Updates (KBs)
-    out << "  \"installedUpdates\": [\n";
+    // Installed Windows Updates — object with osVersion metadata + updates array
+    out << "  \"installedUpdates\": {\n";
+
+    // OS version sub-object: ntoskrnl.exe file version, OS display name, architecture
+    out << "    \"osVersion\": {\n";
+    out << "      \"os\": " << JsonEscape(osVersionInfo.osDisplayName) << ",\n";
+    out << "      \"ntoskrnlPath\": " << JsonEscape(osVersionInfo.ntoskrnlPath) << ",\n";
+    out << "      \"ntoskrnl.exeVersion\": " << JsonEscape(osVersionInfo.ntoskrnlVersion) << ",\n";
+    out << "      \"processorArchitecture\": " << JsonEscape(osVersionInfo.processorArchitecture) << "\n";
+    out << "    },\n";
+
+    // Updates array
+    out << "    \"updates\": [\n";
     for (size_t i = 0; i < installedUpdates.size(); ++i)
     {
         const auto& upd = installedUpdates[i];
-        out << "    {\n";
-        out << "      \"title\": " << JsonEscape(upd.title) << ",\n";
-        out << "      \"updateId\": " << JsonEscape(upd.updateId) << ",\n";
-        out << "      \"revisionNumber\": " << upd.revisionNumber << ",\n";
-        out << "      \"description\": " << JsonEscape(upd.description) << ",\n";
+        out << "      {\n";
+        out << "        \"title\": " << JsonEscape(upd.title) << ",\n";
+        out << "        \"updateId\": " << JsonEscape(upd.updateId) << ",\n";
+        out << "        \"revisionNumber\": " << upd.revisionNumber << ",\n";
+        out << "        \"description\": " << JsonEscape(upd.description) << ",\n";
 
-        out << "      \"kbArticleIds\": [";
+        out << "        \"kbArticleIds\": [";
         for (size_t k = 0; k < upd.kbArticleIds.size(); ++k)
         {
             out << JsonEscape(upd.kbArticleIds[k]);
@@ -625,7 +639,7 @@ std::string GenerateJSON()
         }
         out << "],\n";
 
-        out << "      \"categories\": [";
+        out << "        \"categories\": [";
         for (size_t c = 0; c < upd.categories.size(); ++c)
         {
             out << JsonEscape(upd.categories[c]);
@@ -633,15 +647,17 @@ std::string GenerateJSON()
         }
         out << "],\n";
 
-        out << "      \"supportUrl\": " << JsonEscape(upd.supportUrl) << ",\n";
-        out << "      \"msrcSeverity\": " << JsonEscape(upd.msrcSeverity) << ",\n";
-        out << "      \"installedDate\": " << JsonEscape(upd.installedDate) << ",\n";
-        out << "      \"operationResultCode\": " << upd.operationResultCode << "\n";
-        out << "    }";
+        out << "        \"supportUrl\": " << JsonEscape(upd.supportUrl) << ",\n";
+        out << "        \"msrcSeverity\": " << JsonEscape(upd.msrcSeverity) << ",\n";
+        out << "        \"installedDate\": " << JsonEscape(upd.installedDate) << ",\n";
+        out << "        \"operationResultCode\": " << upd.operationResultCode << "\n";
+        out << "      }";
         if (i + 1 < installedUpdates.size()) out << ",";
         out << "\n";
     }
-    out << "  ]\n";
+    out << "    ]\n";
+
+    out << "  }\n";
     out << "}\n";
 
     return out.str();
