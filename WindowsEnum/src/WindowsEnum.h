@@ -12,3 +12,4 @@
 #include "PrivMgmt.h"
 #include "InstalledUpdates.h"
 #include "OsVersionInfo.h"
+#include "WindowsServices.h"

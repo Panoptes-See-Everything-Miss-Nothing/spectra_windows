@@ -199,6 +199,7 @@
     <ClCompile Include="src\InstalledUpdates.cpp" />
     <ClCompile Include="src\Service\ServiceMain.cpp" />
     <ClCompile Include="src\Service\ServiceTamperProtection.cpp" />
+    <ClCompile Include="src\WindowsServices.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\OsVersionInfo.h" />
@@ -220,6 +221,7 @@
     <ClInclude Include="src\Service\ServiceInstaller.h" />
     <ClInclude Include="src\Service\ServiceMain.h" />
     <ClInclude Include="src\Service\ServiceTamperProtection.h" />
+    <ClInclude Include="src\WindowsServices.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />

@@ -93,11 +93,49 @@ void LogWideStringAsUtf8(const std::string& prefix, const std::wstring& value)
 // UTF-8 JSON ESCAPE
 std::string JsonEscape(const std::wstring& input)
 {
-    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, input.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    // Sanitize input by removing invisible Unicode formatting characters
+    // (e.g., LRM/RLM, LRE/RLE, PDF, isolate controls) which may be present
+    // in registry values or service descriptions and can corrupt JSON display.
+    auto SanitizeForJson = [](const std::wstring& s) {
+        std::wstring out;
+        out.reserve(s.size());
+        for (wchar_t ch : s)
+        {
+            // Allow common whitespace characters
+            if (ch == L'\r' || ch == L'\n' || ch == L'\t')
+            {
+                out.push_back(ch);
+                continue;
+            }
+
+            // Skip C0 control characters
+            if (ch < 0x20)
+                continue;
+
+            // Skip known Unicode format/isolate and bidi control characters
+            // U+061C (ALM), U+200E (LRM), U+200F (RLM)
+            // U+202A..U+202E (LRE, RLE, PDF, LRO, RLO)
+            // U+2066..U+2069 (isolate controls)
+            const wchar_t chv = ch;
+            if (chv == 0x061C || chv == 0x200E || chv == 0x200F ||
+                (chv >= 0x202A && chv <= 0x202E) ||
+                (chv >= 0x2066 && chv <= 0x2069))
+            {
+                continue;
+            }
+
+            out.push_back(ch);
+        }
+        return out;
+    };
+
+    std::wstring sanitized = SanitizeForJson(input);
+
+    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, sanitized.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (sizeNeeded <= 0) return "\"\"";
 
     std::string utf8(sizeNeeded - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, input.c_str(), -1, utf8.data(), sizeNeeded, nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, sanitized.c_str(), -1, utf8.data(), sizeNeeded, nullptr, nullptr);
 
     std::ostringstream out;
     out << "\"";
@@ -445,6 +483,9 @@ std::string GenerateJSON()
 
     svipAddresses = GetLocalIPAddresses();
 
+    // Enumerate all installed Windows services via SCM APIs
+    std::vector<WindowsServiceInfo> windowsServices = EnumerateWindowsServices();
+
     // Get ISO 8601 timestamp for collection
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
@@ -657,7 +698,30 @@ std::string GenerateJSON()
     }
     out << "    ]\n";
 
-    out << "  }\n";
+    out << "  },\n";
+
+    // Windows Services — array of all installed Win32 services
+    out << "  \"windowsServices\": [\n";
+    for (size_t i = 0; i < windowsServices.size(); ++i)
+    {
+        const auto& svc = windowsServices[i];
+        out << "    {\n";
+        out << "      \"serviceName\": " << JsonEscape(svc.serviceName) << ",\n";
+        out << "      \"displayName\": " << JsonEscape(svc.displayName) << ",\n";
+        out << "      \"description\": " << JsonEscape(svc.description) << ",\n";
+        out << "      \"binaryPathName\": " << JsonEscape(svc.binaryPathName) << ",\n";
+        out << "      \"serviceStartName\": " << JsonEscape(svc.serviceStartName) << ",\n";
+        out << "      \"startType\": " << JsonEscape(svc.startType) << ",\n";
+        out << "      \"currentState\": " << JsonEscape(svc.currentState) << ",\n";
+        out << "      \"serviceType\": " << JsonEscape(svc.serviceType) << ",\n";
+        out << "      \"processId\": " << svc.processId << ",\n";
+        out << "      \"isRunning\": " << (svc.isRunning ? "true" : "false") << "\n";
+        out << "    }";
+        if (i + 1 < windowsServices.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ]\n";
+
     out << "}\n";
 
     return out.str();
