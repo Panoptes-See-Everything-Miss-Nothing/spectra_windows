@@ -69,6 +69,9 @@
     <ClCompile Include="src\Service\ServiceInstaller.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\OsVersionInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Utils\Utils.h">
@@ -123,6 +126,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Service\MachineId.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\OsVersionInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
