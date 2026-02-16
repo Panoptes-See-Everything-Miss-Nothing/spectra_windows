@@ -59,6 +59,12 @@ SERVICE_STATUS_HANDLE ServiceMain::g_hServiceStatusHandle = nullptr;
 SERVICE_STATUS ServiceMain::g_serviceStatus = {};
 HANDLE ServiceMain::g_hStopEvent = nullptr;
 HANDLE ServiceMain::g_hWorkerThread = nullptr;
+ProcessTracker ServiceMain::g_processTracker;
+
+ProcessTracker* ServiceMain::GetProcessTracker()
+{
+    return &g_processTracker;
+}
 
 // Run the service (called from main)
 bool ServiceMain::RunService()
@@ -146,7 +152,7 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
     {
     case SERVICE_CONTROL_STOP:
         LogError("[!] Service STOP command received");
-        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 5000);
+        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 30000);
         
         // Signal the worker thread to stop
         if (g_hStopEvent)
@@ -156,7 +162,7 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 
     case SERVICE_CONTROL_SHUTDOWN:
         LogError("[!] System SHUTDOWN detected");
-        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 5000);
+        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 30000);
         
         // Signal the worker thread to stop
         if (g_hStopEvent)
@@ -222,6 +228,16 @@ DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
             LogError("[+] Output directory created successfully");
         }
 
+        // Start real-time process tracking (ETW with Sysmon fallback)
+        if (g_processTracker.Start())
+        {
+            LogError("[+] Real-time process tracking is active");
+        }
+        else
+        {
+            LogError("[!] Real-time process tracking could not be started (disabled or all sources failed)");
+        }
+
         // Perform initial data collection
         LogError("[+] Performing initial data collection...");
         PerformDataCollection();
@@ -257,6 +273,17 @@ DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
         }
 
         LogError("[+] Worker thread shutting down");
+
+        // Flush accumulated process data to disk before stopping the tracker.
+        // Without this, all ETW-buffered processes since the last scheduled
+        // collection (up to 24 hours of data) would be lost on service stop
+        // or system reboot. CollectAndReset() inside GenerateProcessJSON()
+        // drains the buffer, so the tracker can be stopped cleanly afterward.
+        LogError("[+] Flushing process data before shutdown...");
+        PerformDataCollection();
+
+        // Stop real-time process tracking
+        g_processTracker.Stop();
 
         // Report that service is stopped
         ReportServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
@@ -342,25 +369,40 @@ void ServiceMain::PerformDataCollection()
     {
         LogError("[+] Starting inventory data collection");
 
-        // Generate JSON inventory
-        std::string jsonData = GenerateJSON();
-
         // Get output directory from configuration
         std::wstring outputDir = ServiceConfig::GetOutputDirectory();
 
-        // Write to a single inventory file, overwriting previous content.
-        // Only one file is maintained at any given time.
-        std::wstring outputFile = outputDir + L"\\inventory.json";
-        std::ofstream outFile(outputFile, std::ios::out | std::ios::trunc);
+        // Generate and write inventory JSON (apps, updates, services, OS info)
+        std::string jsonData = GenerateJSON();
+
+        std::wstring inventoryFile = outputDir + L"\\inventory.json";
+        std::ofstream outFile(inventoryFile, std::ios::out | std::ios::trunc);
         if (outFile.is_open())
         {
             outFile << jsonData;
             outFile.close();
-            LogError("[+] JSON written to: " + WideToUtf8(outputFile));
+            LogError("[+] Inventory JSON written to: " + WideToUtf8(inventoryFile));
         }
         else
         {
-            LogError("[-] Failed to write JSON file: " + WideToUtf8(outputFile));
+            LogError("[-] Failed to write inventory JSON file: " + WideToUtf8(inventoryFile));
+        }
+
+        // Generate and write process JSON (ETW + snapshot process data)
+        // Overwritten each collection cycle with cumulative ETW data + fresh snapshot.
+        std::string processData = GenerateProcessJSON();
+
+        std::wstring processFile = outputDir + L"\\processes.json";
+        std::ofstream procOutFile(processFile, std::ios::out | std::ios::trunc);
+        if (procOutFile.is_open())
+        {
+            procOutFile << processData;
+            procOutFile.close();
+            LogError("[+] Process JSON written to: " + WideToUtf8(processFile));
+        }
+        else
+        {
+            LogError("[-] Failed to write process JSON file: " + WideToUtf8(processFile));
         }
 
         LogError("[+] Data collection completed successfully");

@@ -95,4 +95,10 @@ namespace ServiceConfig
     {
         return ReadRegistryDword(REG_ENABLE_DETAILED_LOGGING, 0) != 0;
     }
+    
+    bool IsProcessTrackingEnabled()
+    {
+        // Default: enabled (1). Set to 0 in registry to disable.
+        return ReadRegistryDword(REG_ENABLE_PROCESS_TRACKING, 1) != 0;
+    }
 }
