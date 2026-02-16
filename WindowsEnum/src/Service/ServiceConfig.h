@@ -29,6 +29,7 @@ namespace ServiceConfig
     constexpr const wchar_t* REG_SERVER_URL = L"ServerUrl";
     constexpr const wchar_t* REG_ENABLE_DETAILED_LOGGING = L"EnableDetailedLogging";
     constexpr const wchar_t* REG_OUTPUT_DIRECTORY = L"OutputDirectory";
+    constexpr const wchar_t* REG_ENABLE_PROCESS_TRACKING = L"EnableProcessTracking";
     
     // Default values (used if registry not configured)
     constexpr DWORD DEFAULT_COLLECTION_INTERVAL_SECONDS = 86400; // 24 hours (daily collection)
@@ -56,4 +57,5 @@ namespace ServiceConfig
     std::wstring GetOutputDirectory();
     std::wstring GetServerUrl();
     bool IsDetailedLoggingEnabled();
+    bool IsProcessTrackingEnabled();
 }

@@ -13,3 +13,4 @@
 #include "InstalledUpdates.h"
 #include "OsVersionInfo.h"
 #include "WindowsServices.h"
+#include "ProcessTracker.h"

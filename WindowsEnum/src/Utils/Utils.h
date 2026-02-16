@@ -44,6 +44,10 @@ std::string GetWindowsErrorMessage(LONG errorCode);
 // Generate JSON inventory of all system information
 std::string GenerateJSON();
 
+// Generate JSON for running processes (separate from inventory to avoid bloat).
+// Contains ETW real-time data + point-in-time snapshot, process tracker diagnostics.
+std::string GenerateProcessJSON();
+
 // Directory Security Validation Functions
 
 // Check if a path is a directory (not a file)

@@ -3,6 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "../Utils/Utils.h"
+#include "../ProcessTracker.h"
 
 // Windows Service main entry point and control handlers
 class ServiceMain
@@ -17,6 +18,9 @@ public:
     
     // Run the service
     static bool RunService();
+    
+    // Access the process tracker instance (used by GenerateJSON for snapshot data)
+    static ProcessTracker* GetProcessTracker();
 
 private:
     // Service worker thread
@@ -39,4 +43,7 @@ private:
     
     // Worker thread handle
     static HANDLE g_hWorkerThread;
+    
+    // Real-time process tracker (ETW-based with Sysmon fallback)
+    static ProcessTracker g_processTracker;
 };

@@ -3,9 +3,11 @@
 #include "../WinAppXPackages.h"
 #include "../Service/MachineId.h"
 #include "../Service/ServiceConfig.h"
+#include "../Service/ServiceMain.h"
 #include <aclapi.h>
 #include <sddl.h>
 #include <unordered_map>
+#include <unordered_set>
 
 // Static mutex for thread-safe logging
 static std::mutex g_logMutex;
@@ -486,6 +488,15 @@ std::string GenerateJSON()
     // Enumerate all installed Windows services via SCM APIs
     std::vector<WindowsServiceInfo> windowsServices = EnumerateWindowsServices();
 
+    // Get process tracker diagnostics summary for inventory metadata.
+    // Full process data is written separately to processes.json.
+    ProcessTrackerDiagnostics trackerDiagnostics = {};
+    ProcessTracker* tracker = ServiceMain::GetProcessTracker();
+    if (tracker != nullptr)
+    {
+        trackerDiagnostics = tracker->GetDiagnostics();
+    }
+
     // Get ISO 8601 timestamp for collection
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
@@ -720,9 +731,156 @@ std::string GenerateJSON()
         if (i + 1 < windowsServices.size()) out << ",";
         out << "\n";
     }
-    out << "  ]\n";
+    out << "  ],\n";
+
+    // Lightweight process tracking summary (full data in processes.json)
+    {
+        auto SourceToString = [](ProcessTrackingSource src) -> const char* {
+            switch (src)
+            {
+            case ProcessTrackingSource::EtwKernelProcess: return "EtwKernelProcess";
+            case ProcessTrackingSource::SysmonEventLog:   return "SysmonEventLog";
+            case ProcessTrackingSource::Disabled:          return "Disabled";
+            default:                                       return "None";
+            }
+        };
+
+        out << "  \"processTrackingSummary\": {\n";
+        out << "    \"activeSource\": \"" << SourceToString(trackerDiagnostics.activeSource) << "\",\n";
+        out << "    \"isActive\": " << (tracker != nullptr && tracker->IsRunning() ? "true" : "false") << ",\n";
+        out << "    \"totalEventsReceived\": " << trackerDiagnostics.totalEventsReceived << ",\n";
+        out << "    \"dataFile\": \"processes.json\"\n";
+        out << "  }\n";
+    }
 
     out << "}\n";
+
+    return out.str();
+}
+
+std::string GenerateProcessJSON()
+{
+    LogError("[+] Collecting running process data for processes.json");
+
+    // Enumerate Windows services to build exclusion list
+    std::vector<WindowsServiceInfo> windowsServices = EnumerateWindowsServices();
+
+    std::vector<DWORD> serviceProcessIds;
+    serviceProcessIds.reserve(windowsServices.size());
+    for (const auto& svc : windowsServices)
+    {
+        if (svc.processId != 0)
+        {
+            serviceProcessIds.push_back(svc.processId);
+        }
+    }
+
+    // Get processes observed by ETW tracker since last collection
+    std::vector<RunningProcessInfo> runningProcesses;
+    ProcessTrackerDiagnostics trackerDiagnostics = {};
+    ProcessTracker* tracker = ServiceMain::GetProcessTracker();
+    if (tracker != nullptr && tracker->IsRunning())
+    {
+        runningProcesses = tracker->CollectAndReset();
+        trackerDiagnostics = tracker->GetDiagnostics();
+    }
+    else if (tracker != nullptr)
+    {
+        trackerDiagnostics = tracker->GetDiagnostics();
+    }
+
+    // Supplement with a point-in-time snapshot of currently running processes.
+    // This catches processes that were already running before the ETW session started.
+    std::vector<RunningProcessInfo> snapshotProcesses = SnapshotRunningProcesses(serviceProcessIds);
+
+    // Merge: add snapshot processes that aren't already in the ETW set (deduplicate by PID)
+    {
+        std::unordered_set<DWORD> etwPids;
+        for (const auto& proc : runningProcesses)
+        {
+            etwPids.insert(proc.processId);
+        }
+        for (auto& proc : snapshotProcesses)
+        {
+            if (etwPids.find(proc.processId) == etwPids.end())
+            {
+                runningProcesses.push_back(std::move(proc));
+            }
+        }
+    }
+
+    // Get ISO 8601 timestamp for this collection
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    struct tm timeinfo = {};
+    std::string timestamp;
+
+    if (localtime_s(&timeinfo, &time) == 0)
+    {
+        std::ostringstream timestampStream;
+        timestampStream << std::put_time(&timeinfo, "%Y-%m-%dT%H:%M:%S");
+        timestamp = timestampStream.str();
+    }
+    else
+    {
+        timestamp = "UNKNOWN";
+    }
+
+    // JSON Begin — self-describing document with machine ID for correlation
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"spectraMachineId\": \"" << MachineId::GetMachineIdUtf8() << "\",\n";
+    out << "  \"collectionTimestamp\": \"" << timestamp << "\",\n";
+    out << "  \"agentVersion\": \"" << WideToUtf8(ServiceConfig::VERSION) << "\",\n";
+
+    // Running Processes — non-service processes observed via ETW + snapshot
+    out << "  \"runningProcesses\": [\n";
+    for (size_t i = 0; i < runningProcesses.size(); ++i)
+    {
+        const auto& proc = runningProcesses[i];
+        out << "    {\n";
+        out << "      \"imagePath\": " << JsonEscape(proc.imagePath) << ",\n";
+        out << "      \"commandLine\": " << JsonEscape(proc.commandLine) << ",\n";
+        out << "      \"userSid\": " << JsonEscape(proc.userSid) << ",\n";
+        out << "      \"username\": " << JsonEscape(proc.username) << ",\n";
+        out << "      \"processId\": " << proc.processId << ",\n";
+        out << "      \"parentProcessId\": " << proc.parentProcessId << ",\n";
+        out << "      \"parentImagePath\": " << JsonEscape(proc.parentImagePath) << ",\n";
+        out << "      \"firstSeenTimestamp\": " << JsonEscape(proc.firstSeenTimestamp) << "\n";
+        out << "    }";
+        if (i + 1 < runningProcesses.size()) out << ",";
+        out << "\n";
+    }
+    out << "  ],\n";
+
+    // Process Tracker Diagnostics — full telemetry for troubleshooting
+    {
+        auto SourceToString = [](ProcessTrackingSource src) -> const char* {
+            switch (src)
+            {
+            case ProcessTrackingSource::EtwKernelProcess: return "EtwKernelProcess";
+            case ProcessTrackingSource::SysmonEventLog:   return "SysmonEventLog";
+            case ProcessTrackingSource::Disabled:          return "Disabled";
+            default:                                       return "None";
+            }
+        };
+
+        out << "  \"processTrackerDiagnostics\": {\n";
+        out << "    \"activeSource\": \"" << SourceToString(trackerDiagnostics.activeSource) << "\",\n";
+        out << "    \"etwSessionStartResult\": " << trackerDiagnostics.etwSessionStartResult << ",\n";
+        out << "    \"etwConsumerOpenResult\": " << trackerDiagnostics.etwConsumerOpenResult << ",\n";
+        out << "    \"sysmonAvailable\": " << (trackerDiagnostics.sysmonAvailable ? "true" : "false") << ",\n";
+        out << "    \"totalEventsReceived\": " << trackerDiagnostics.totalEventsReceived << ",\n";
+        out << "    \"eventsDeduplicatedOut\": " << trackerDiagnostics.eventsDeduplicatedOut << ",\n";
+        out << "    \"serviceProcessesExcluded\": " << trackerDiagnostics.serviceProcessesExcluded << ",\n";
+        out << "    \"lastErrorMessage\": " << JsonEscape(trackerDiagnostics.lastErrorMessage) << ",\n";
+        out << "    \"processesCollected\": " << runningProcesses.size() << "\n";
+        out << "  }\n";
+    }
+
+    out << "}\n";
+
+    LogError("[+] Process JSON generated: " + std::to_string(runningProcesses.size()) + " processes");
 
     return out.str();
 }

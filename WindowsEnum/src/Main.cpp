@@ -121,6 +121,9 @@ int RunConsoleMode()
     std::string jsonData = GenerateJSON();
     WriteJSONToFile(jsonData);
     
+    std::string processData = GenerateProcessJSON();
+    WriteJSONToFile(processData, L"processes.json");
+    
     LogError("[+] Console mode execution completed");
     return 0;
 }
@@ -132,16 +135,19 @@ int RunTestMode()
     LogError("[+] Performing single data collection for validation...");
     
     std::string jsonData = GenerateJSON();
+    std::string processData = GenerateProcessJSON();
     
     std::cout << "\n==========================================================\n";
     std::cout << "DATA COLLECTION TEST COMPLETED\n";
     std::cout << "==========================================================\n";
-    std::cout << "JSON Output Size: " << jsonData.size() << " bytes\n";
+    std::cout << "Inventory JSON Size: " << jsonData.size() << " bytes\n";
+    std::cout << "Process JSON Size:   " << processData.size() << " bytes\n";
     std::cout << "Output Location: Current Directory\n";
     std::cout << "\nTo install as service, run: Spectra.exe /install\n";
     std::cout << "==========================================================\n";
     
     WriteJSONToFile(jsonData);
+    WriteJSONToFile(processData, L"processes.json");
     return 0;
 }
 
