@@ -184,6 +184,10 @@ bool ProcessTracker::Start()
 
     LogError("[+] ProcessTracker: Attempting to start ETW session...");
 
+    // Resolve managed directory prefixes once at startup for path-based exclusion.
+    // Must be called before StartEtwSession() so the ETW callback can use them.
+    InitExcludedPathPrefixes();
+
     // Primary: Try ETW kernel process provider
     if (StartEtwSession())
     {
@@ -596,6 +600,16 @@ void ProcessTracker::HandleProcessStartEvent(PEVENT_RECORD pEventRecord)
         return;
     }
 
+    // Exclude processes from managed/OS directories (Windows, Program Files, etc.).
+    // These binaries are already captured by the software inventory and would
+    // produce noise without actionable CVE-correlation value.
+    if (IsExcludedByPath(imagePath))
+    {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        m_diagnostics.managedPathProcessesExcluded++;
+        return;
+    }
+
     // Resolve user SID from the process token
     std::wstring userSid = GetProcessUserSid(processId);
     std::wstring username = ResolveSidToUsername(userSid);
@@ -922,9 +936,105 @@ DWORD ProcessTracker::GetServicesPid() const
     return 0;
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+void ProcessTracker::InitExcludedPathPrefixes()
+{
+    m_excludedPathPrefixes.clear();
+
+    // Helper: resolve a directory path, lowercase it, ensure trailing backslash,
+    // and add to the exclusion list. Logs a warning if resolution fails.
+    auto AddPrefix = [this](const std::wstring& path, const char* label) {
+        if (path.empty())
+        {
+            LogError(std::string("[!] ProcessTracker: Could not resolve ") + label +
+                     " directory for path exclusion");
+            return;
+        }
+        std::wstring lower = path;
+        CharLowerW(lower.data());
+        if (lower.back() != L'\\')
+        {
+            lower.push_back(L'\\');
+        }
+        m_excludedPathPrefixes.push_back(std::move(lower));
+    };
+
+    // Resolve the Windows directory (e.g., C:\Windows)
+    {
+        UINT len = GetWindowsDirectoryW(nullptr, 0);
+        if (len > 0)
+        {
+            std::wstring winDir(static_cast<size_t>(len), L'\0');
+            UINT copied = GetWindowsDirectoryW(winDir.data(), len);
+            if (copied > 0 && copied < len)
+            {
+                winDir.resize(static_cast<size_t>(copied));
+                AddPrefix(winDir, "Windows");
+            }
+        }
+    }
+
+    // Resolve Program Files directories from environment variables.
+    // Using environment variables rather than SHGetKnownFolderPath because:
+    // 1. ProgramFiles / ProgramFiles(x86) are set by the OS at boot
+    // 2. No COM dependency (SHGetKnownFolderPath requires COM initialization)
+    // 3. Works identically for SYSTEM account and user accounts
+    {
+        wchar_t buffer[MAX_PATH] = {};
+        DWORD len = GetEnvironmentVariableW(L"ProgramFiles", buffer, MAX_PATH);
+        if (len > 0 && len < MAX_PATH)
+        {
+            AddPrefix(std::wstring(buffer, len), "ProgramFiles");
+        }
+    }
+    {
+        wchar_t buffer[MAX_PATH] = {};
+        DWORD len = GetEnvironmentVariableW(L"ProgramFiles(x86)", buffer, MAX_PATH);
+        if (len > 0 && len < MAX_PATH)
+        {
+            AddPrefix(std::wstring(buffer, len), "ProgramFiles(x86)");
+        }
+    }
+    {
+        wchar_t buffer[MAX_PATH] = {};
+        DWORD len = GetEnvironmentVariableW(L"ProgramData", buffer, MAX_PATH);
+        if (len > 0 && len < MAX_PATH)
+        {
+            AddPrefix(std::wstring(buffer, len), "ProgramData");
+        }
+    }
+
+    LogError("[+] ProcessTracker: Initialized " + std::to_string(m_excludedPathPrefixes.size()) +
+             " managed path exclusion prefixes");
+    for (const auto& prefix : m_excludedPathPrefixes)
+    {
+        LogWideStringAsUtf8("[+] ProcessTracker:   Exclude prefix: ", prefix);
+    }
+}
+
+bool ProcessTracker::IsExcludedByPath(const std::wstring& imagePath) const
+{
+    if (imagePath.empty() || m_excludedPathPrefixes.empty())
+    {
+        return false;
+    }
+
+    // Lowercase the image path for case-insensitive comparison.
+    // Stack buffer covers ~99% of paths without heap allocation.
+    // CharLowerBuffW is locale-aware and handles all Unicode correctly.
+    std::wstring lower = imagePath;
+    CharLowerBuffW(lower.data(), static_cast<DWORD>(lower.size()));
+
+    for (const auto& prefix : m_excludedPathPrefixes)
+    {
+        if (lower.size() >= prefix.size() &&
+            lower.compare(0, prefix.size(), prefix) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 std::wstring ProcessTracker::GetProcessUserSid(DWORD processId)
 {
@@ -1156,7 +1266,8 @@ std::wstring ProcessTracker::GetFileVersion(const std::wstring& filePath)
 // ============================================================================
 
 std::vector<RunningProcessInfo> SnapshotRunningProcesses(
-    const std::vector<DWORD>& serviceProcessIds)
+const std::vector<DWORD>& serviceProcessIds,
+const ProcessTracker* tracker)
 {
     std::vector<RunningProcessInfo> processes;
 
@@ -1229,6 +1340,13 @@ std::vector<RunningProcessInfo> SnapshotRunningProcesses(
         if (imagePath.empty())
         {
             // Cannot read — likely a protected/kernel process
+            continue;
+        }
+
+        // Skip processes from managed/OS directories (Windows, Program Files, etc.).
+        // These are already captured by the software inventory.
+        if (tracker != nullptr && tracker->IsExcludedByPath(imagePath))
+        {
             continue;
         }
 

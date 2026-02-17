@@ -46,6 +46,7 @@ struct ProcessTrackerDiagnostics
     DWORD totalEventsReceived = 0;              // Total process-start events received
     DWORD eventsDeduplicatedOut = 0;            // Events dropped by dedup filter
     DWORD serviceProcessesExcluded = 0;         // Events excluded as service processes
+    DWORD managedPathProcessesExcluded = 0;     // Events excluded by managed path prefix filter
     std::wstring lastErrorMessage;              // Human-readable last error
 };
 
@@ -126,6 +127,10 @@ private:
     // Find the PID of services.exe (cached)
     DWORD GetServicesPid() const;
 
+    // Resolve managed directory prefixes at runtime from environment.
+    // Called once during Start() to avoid per-event syscalls.
+    void InitExcludedPathPrefixes();
+
 public:
     // These helpers are public so that SnapshotRunningProcesses() can reuse them.
 
@@ -145,6 +150,12 @@ public:
     // Uses LoadLibraryExW(DATAFILE) to map the PE without executing code or applying
     // the GetFileVersionInfo compatibility shim. Returns empty string on failure.
     static std::wstring GetFileVersion(const std::wstring& filePath);
+
+    // Check if a process image path falls under a managed/OS directory
+    // (e.g., Windows, Program Files) whose software is already inventoried.
+    // Returns true if the process should be excluded from collection.
+    // Public so SnapshotRunningProcesses() can reuse it.
+    bool IsExcludedByPath(const std::wstring& imagePath) const;
 
 private:
 
@@ -181,6 +192,12 @@ private:
 
     std::atomic<bool> m_isRunning{ false };
 
+    // Managed/OS directory prefixes resolved at startup.
+    // Processes under these paths are excluded because their software
+    // is already captured by the inventory (Uninstall registry, MSI, AppX).
+    // Stored as lowercase for case-insensitive prefix matching.
+    std::vector<std::wstring> m_excludedPathPrefixes;
+
     // Cached services.exe PID with TTL-based expiry.
     // services.exe PID is stable under normal operation, but we refresh
     // periodically (every 5 minutes) for correctness in edge cases.
@@ -202,6 +219,7 @@ private:
 // Snapshot-based collection: enumerate currently running processes.
 // Used as a one-time collection during GenerateJSON() to capture processes
 // that were already running before the ETW session started.
-// Excludes Windows service processes.
+// Excludes Windows service processes and managed path processes.
 std::vector<RunningProcessInfo> SnapshotRunningProcesses(
-    const std::vector<DWORD>& serviceProcessIds);
+    const std::vector<DWORD>& serviceProcessIds,
+    const ProcessTracker* tracker = nullptr);
