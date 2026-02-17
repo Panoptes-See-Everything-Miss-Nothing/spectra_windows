@@ -121,11 +121,13 @@ private:
     // Purge expired deduplication entries
     void PurgeExpiredDeduplicationEntries();
 
-    // Check if a process is a known Windows service by its PID or parent
+    // Check if a process is a known Windows service by its PID or parent.
+    // Matches processes whose parent is services.exe or any svchost.exe instance.
     bool IsServiceProcess(DWORD processId, DWORD parentProcessId) const;
 
-    // Find the PID of services.exe (cached)
-    DWORD GetServicesPid() const;
+    // Resolve PIDs of services.exe and all svchost.exe instances (cached with TTL).
+    // Populates m_servicesPid and m_svchostPids from a single process snapshot.
+    void RefreshServiceHostPids() const;
 
     // Resolve managed directory prefixes at runtime from environment.
     // Called once during Start() to avoid per-event syscalls.
@@ -186,6 +188,12 @@ private:
     // Stop signal
     HANDLE m_stopEvent = nullptr;
 
+    // Sysmon startup synchronization: signaled by PollSysmonEvents() after
+    // EvtSubscribe succeeds or fails, so StartSysmonFallback() can return
+    // an accurate result instead of racing the polling thread.
+    HANDLE m_sysmonReadyEvent = nullptr;
+    std::atomic<bool> m_sysmonSubscribeSucceeded{ false };
+
     // Diagnostics (atomic where possible, mutex-protected otherwise)
     mutable std::mutex m_diagMutex;
     ProcessTrackerDiagnostics m_diagnostics = {};
@@ -198,12 +206,13 @@ private:
     // Stored as lowercase for case-insensitive prefix matching.
     std::vector<std::wstring> m_excludedPathPrefixes;
 
-    // Cached services.exe PID with TTL-based expiry.
-    // services.exe PID is stable under normal operation, but we refresh
-    // periodically (every 5 minutes) for correctness in edge cases.
+    // Cached service host PIDs with TTL-based expiry.
+    // services.exe PID is stable; svchost.exe PIDs are mostly stable but can
+    // change when service groups start/stop. Refreshed every 5 minutes.
     mutable DWORD m_servicesPid = 0;
-    mutable bool m_servicesPidCached = false;
-    mutable ULONGLONG m_servicesPidCacheExpiry = 0;
+    mutable std::unordered_set<DWORD> m_svchostPids;
+    mutable bool m_serviceHostPidsCached = false;
+    mutable ULONGLONG m_serviceHostPidsCacheExpiry = 0;
 
     // ETW session name (must be unique system-wide)
     static constexpr const wchar_t* ETW_SESSION_NAME = L"PanoptesSpectraProcessTracker";

@@ -219,10 +219,9 @@ bool ServiceInstaller::InstallService()
     }
 
     // Step 10: Apply directory ACLs NOW that the service SID exists in SCM.
-    // SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token where only
-    // SIDs in the restricting list can pass write-access checks. The per-service
-    // SID (NT SERVICE\PanoptesSpectra) must be explicitly granted Modify access
-    // on every directory the service writes to.
+    // The per-service SID (NT SERVICE\PanoptesSpectra) is granted Modify access
+    // on every directory the service writes to, enabling fine-grained access control
+    // even with SERVICE_SID_TYPE_UNRESTRICTED.
     {
         const std::vector<std::wstring> directories = {
             ServiceConfig::OUTPUT_DIRECTORY,
@@ -408,8 +407,11 @@ bool ServiceInstaller::UpgradeService()
         return false;
     }
 
-    // Step 5: Stop the running service
-    if (!StopServiceAndWait(hService, 30))
+    // Step 5: Stop the running service.
+    // 120-second timeout: the service may be mid-inventory-collection (VSS
+    // snapshots, modern app enumeration) when stop arrives and needs time
+    // to reach a cancellation point before performing its shutdown flush.
+    if (!StopServiceAndWait(hService, 120))
     {
         LogError("[-] Failed to stop service - upgrade cannot proceed");
         LogError("[!] Restoring tamper protection before aborting...");
@@ -421,7 +423,7 @@ bool ServiceInstaller::UpgradeService()
 
     // Step 6: Wait for the service process to fully exit.
     // The old executable file handle must be released before we can overwrite it.
-    WaitForServiceProcessExit(hService, 30);
+    WaitForServiceProcessExit(hService, 60);
 
     // Step 7: Copy the new executable over the installed location.
     // The path does not change - CopyFileW with bFailIfExists=FALSE overwrites in place.
@@ -665,8 +667,9 @@ bool ServiceInstaller::UninstallService()
             return false;
         }
 
-        // Stop the service if it's running
-        if (!StopServiceAndWait(hService, 30))
+        // Stop the service if it's running.
+        // 120-second timeout: the service may be mid-inventory-collection.
+        if (!StopServiceAndWait(hService, 120))
         {
             LogError("[!] WARNING: Service may not have stopped cleanly");
         }
@@ -1043,33 +1046,30 @@ bool ServiceInstaller::ApplyServiceHardening(SC_HANDLE hService)
 {
     bool allSuccess = true;
 
-    // Apply service SID restriction (limits attack surface).
+    // Apply service SID (adds NT SERVICE\PanoptesSpectra to the process token).
     //
-    // SECURITY NOTE: SERVICE_SID_TYPE_RESTRICTED creates a write-restricted token.
-    // The system performs TWO access checks for write operations:
-    //   1. Normal check against token's enabled SIDs (SYSTEM, service SID, etc.)
-    //   2. Restricted check against ONLY the restricting SID list
-    // Write access is granted only if BOTH checks pass.
+    // SECURITY NOTE: Using SERVICE_SID_TYPE_UNRESTRICTED instead of
+    // SERVICE_SID_TYPE_RESTRICTED. The RESTRICTED type creates a write-restricted
+    // token where the SYSTEM SID is NOT in the restricting SID list. This causes
+    // StartTraceW (ETW session creation) to fail with ERROR_ACCESS_DENIED because
+    // the ETW session security descriptor grants access to SYSTEM, but the
+    // restricted-token write check only evaluates the restricting SID list
+    // (per-service SID, Everyone, logon SID, S-1-5-33) — none of which match.
     //
-    // The restricting SID list contains:
-    //   - NT SERVICE\PanoptesSpectra (per-service SID)
-    //   - S-1-1-0 (World/Everyone)
-    //   - Service logon SID
-    //   - S-1-5-33 (Write-restricted SID)
-    //
-    // CONSEQUENCE: All writable directories MUST have explicit ACEs for the
-    // per-service SID. SYSTEM and Administrators ACEs alone are NOT sufficient
-    // for write access. See ApplyDirectoryAcl() and the ACL step in InstallService().
+    // SERVICE_SID_TYPE_UNRESTRICTED still creates the per-service SID
+    // (NT SERVICE\PanoptesSpectra) and adds it to the token, enabling fine-grained
+    // ACLs on directories and registry keys. It does not create a write-restricted
+    // token, so SYSTEM privileges remain intact for ETW, registry, and filesystem ops.
     SERVICE_SID_INFO sidInfo = {};
-    sidInfo.dwServiceSidType = SERVICE_SID_TYPE_RESTRICTED;
+    sidInfo.dwServiceSidType = SERVICE_SID_TYPE_UNRESTRICTED;
     if (!ChangeServiceConfig2W(hService, SERVICE_CONFIG_SERVICE_SID_INFO, &sidInfo))
     {
-        LogError("[-] WARNING: Failed to set service SID restriction");
+        LogError("[-] WARNING: Failed to set service SID type");
         allSuccess = false;
     }
     else
     {
-        LogError("[+] Service SID restriction applied (write-restricted token)");
+        LogError("[+] Service SID applied (unrestricted — per-service SID added to token)");
     }
 
     // Declare required privileges (for transparency and least privilege)
@@ -1082,7 +1082,7 @@ bool ServiceInstaller::ApplyServiceHardening(SC_HANDLE hService)
     }
     else
     {
-        LogError("[+] Required privileges declared: SE_BACKUP_NAME, SE_RESTORE_NAME");
+        LogError("[+] Required privileges declared: SE_BACKUP_NAME, SE_RESTORE_NAME, SE_SYSTEM_PROFILE_NAME");
     }
 
     // Configure failure actions (auto-restart on failure)

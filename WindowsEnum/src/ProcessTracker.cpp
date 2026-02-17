@@ -340,7 +340,8 @@ bool ProcessTracker::StartEtwSession()
         if (startResult == ERROR_ACCESS_DENIED)
         {
             LogError("[-] ProcessTracker: StartTraceW returned ERROR_ACCESS_DENIED. "
-                     "Service must run as SYSTEM to create kernel ETW sessions.");
+                     "Ensure the service runs as SYSTEM and SeSystemProfilePrivilege "
+                     "is included in the required privileges list.");
         }
         else if (startResult == static_cast<ULONG>(ERROR_NO_SYSTEM_RESOURCES))
         {
@@ -676,14 +677,38 @@ void ProcessTracker::HandleProcessStartEvent(PEVENT_RECORD pEventRecord)
 
 bool ProcessTracker::IsSysmonEventLogAvailable() const
 {
-    // Check if the Sysmon operational event log channel exists
-    HANDLE hLog = OpenEventLogW(nullptr, L"Microsoft-Windows-Sysmon/Operational");
-    if (hLog != nullptr)
+    // Use the Windows Event Log API (EvtOpenChannelConfig) to validate that the
+    // Sysmon channel actually exists. The legacy OpenEventLogW API operates on a
+    // different namespace and can return success for channels that don't exist as
+    // proper Windows Event Log channels, causing EvtSubscribe to fail with 15007.
+    LibraryHandle hWevtapi(LoadLibraryW(L"wevtapi.dll"));
+    if (!hWevtapi)
     {
-        CloseEventLog(hLog);
-        return true;
+        return false;
     }
-    return false;
+
+    using EvtOpenChannelConfigFn = EVT_HANDLE (WINAPI*)(EVT_HANDLE, LPCWSTR, DWORD);
+    using EvtCloseFn = BOOL (WINAPI*)(EVT_HANDLE);
+
+    auto fnEvtOpenChannelConfig = reinterpret_cast<EvtOpenChannelConfigFn>(
+        GetProcAddress(hWevtapi.Get(), "EvtOpenChannelConfig"));
+    auto fnEvtClose = reinterpret_cast<EvtCloseFn>(
+        GetProcAddress(hWevtapi.Get(), "EvtClose"));
+
+    if (fnEvtOpenChannelConfig == nullptr || fnEvtClose == nullptr)
+    {
+        return false;
+    }
+
+    EVT_HANDLE hChannel = fnEvtOpenChannelConfig(
+        nullptr, L"Microsoft-Windows-Sysmon/Operational", 0);
+    if (hChannel == nullptr)
+    {
+        return false;
+    }
+
+    fnEvtClose(hChannel);
+    return true;
 }
 
 bool ProcessTracker::StartSysmonFallback()
@@ -696,20 +721,61 @@ bool ProcessTracker::StartSysmonFallback()
         return false;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(m_diagMutex);
-        m_diagnostics.sysmonAvailable = true;
-        m_diagnostics.activeSource = ProcessTrackingSource::SysmonEventLog;
-    }
-
     LogError("[+] ProcessTracker: Starting Sysmon event log polling fallback");
+
+    // Create a manual-reset event for the polling thread to signal whether
+    // EvtSubscribe succeeded. This prevents the race where StartSysmonFallback()
+    // returns true while the thread asynchronously discovers the channel is missing.
+    m_sysmonReadyEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (m_sysmonReadyEvent == nullptr)
+    {
+        LogError("[-] ProcessTracker: Failed to create Sysmon ready event, error: " +
+                 std::to_string(GetLastError()));
+        return false;
+    }
+    m_sysmonSubscribeSucceeded.store(false);
 
     m_sysmonPollThread = CreateThread(nullptr, 0, SysmonPollingThread, this, 0, nullptr);
     if (m_sysmonPollThread == nullptr)
     {
         LogError("[-] ProcessTracker: Failed to create Sysmon polling thread, error: " +
                  std::to_string(GetLastError()));
+        CloseHandle(m_sysmonReadyEvent);
+        m_sysmonReadyEvent = nullptr;
         return false;
+    }
+
+    // Wait for the polling thread to report whether EvtSubscribe succeeded.
+    // 5-second timeout prevents indefinite blocking if the thread stalls.
+    DWORD waitResult = WaitForSingleObject(m_sysmonReadyEvent, 5000);
+    CloseHandle(m_sysmonReadyEvent);
+    m_sysmonReadyEvent = nullptr;
+
+    if (waitResult != WAIT_OBJECT_0 || !m_sysmonSubscribeSucceeded.load())
+    {
+        LogError("[-] ProcessTracker: Sysmon event subscription failed during startup");
+        // Signal the thread to stop and wait for it to exit cleanly
+        if (m_stopEvent != nullptr)
+        {
+            SetEvent(m_stopEvent);
+        }
+        WaitForSingleObject(m_sysmonPollThread, 5000);
+        CloseHandle(m_sysmonPollThread);
+        m_sysmonPollThread = nullptr;
+        // Reset stop event for potential reuse (stop event is still needed by caller)
+        if (m_stopEvent != nullptr)
+        {
+            ResetEvent(m_stopEvent);
+        }
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        m_diagnostics.sysmonAvailable = false;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        m_diagnostics.sysmonAvailable = true;
+        m_diagnostics.activeSource = ProcessTrackingSource::SysmonEventLog;
     }
 
     return true;
@@ -746,6 +812,11 @@ void ProcessTracker::PollSysmonEvents()
     if (!hWevtapi)
     {
         LogError("[-] ProcessTracker: Failed to load wevtapi.dll for Sysmon fallback");
+        m_sysmonSubscribeSucceeded.store(false);
+        if (m_sysmonReadyEvent != nullptr)
+        {
+            SetEvent(m_sysmonReadyEvent);
+        }
         return;
     }
 
@@ -764,6 +835,11 @@ void ProcessTracker::PollSysmonEvents()
     if (fnEvtSubscribe == nullptr || fnEvtClose == nullptr)
     {
         LogError("[-] ProcessTracker: Failed to resolve wevtapi.dll functions");
+        m_sysmonSubscribeSucceeded.store(false);
+        if (m_sysmonReadyEvent != nullptr)
+        {
+            SetEvent(m_sysmonReadyEvent);
+        }
         return;
     }
 
@@ -786,10 +862,23 @@ void ProcessTracker::PollSysmonEvents()
         DWORD err = GetLastError();
         LogError("[-] ProcessTracker: EvtSubscribe for Sysmon failed, error: " +
                  std::to_string(err) + " — " + GetWindowsErrorMessage(static_cast<LONG>(err)));
+        // Signal the caller that subscription failed
+        m_sysmonSubscribeSucceeded.store(false);
+        if (m_sysmonReadyEvent != nullptr)
+        {
+            SetEvent(m_sysmonReadyEvent);
+        }
         return;
     }
 
     LogError("[+] ProcessTracker: Sysmon event subscription active");
+
+    // Signal the caller that subscription succeeded
+    m_sysmonSubscribeSucceeded.store(true);
+    if (m_sysmonReadyEvent != nullptr)
+    {
+        SetEvent(m_sysmonReadyEvent);
+    }
 
     // Wait for stop signal — the subscription delivers events via the signal handle
     // For simplicity in the fallback path, we just keep the subscription open
@@ -883,9 +972,18 @@ void ProcessTracker::PurgeExpiredDeduplicationEntries()
 
 bool ProcessTracker::IsServiceProcess(DWORD processId, DWORD parentProcessId) const
 {
+    // Ensure cached PIDs are fresh
+    RefreshServiceHostPids();
+
     // A process is considered a service process if its parent is services.exe
-    DWORD servicesPid = GetServicesPid();
-    if (servicesPid != 0 && parentProcessId == servicesPid)
+    // (direct SCM-launched services) or any svchost.exe instance (shared-process
+    // service hosts that spawn child worker processes).
+    if (m_servicesPid != 0 && parentProcessId == m_servicesPid)
+    {
+        return true;
+    }
+
+    if (m_svchostPids.count(parentProcessId) > 0)
     {
         return true;
     }
@@ -893,27 +991,31 @@ bool ProcessTracker::IsServiceProcess(DWORD processId, DWORD parentProcessId) co
     return false;
 }
 
-DWORD ProcessTracker::GetServicesPid() const
+void ProcessTracker::RefreshServiceHostPids() const
 {
     // Check if cache is still valid (refresh every SERVICES_PID_CACHE_TTL_MS).
-    // services.exe PID is stable under normal operation, but we refresh
+    // services.exe PID is stable under normal operation; svchost.exe PIDs are
+    // mostly stable but can change when service groups start/stop. We refresh
     // periodically for correctness in edge cases (failover, recovery, etc.).
-    if (m_servicesPidCached)
+    if (m_serviceHostPidsCached)
     {
         ULONGLONG now = GetTickCount64();
-        if (now < m_servicesPidCacheExpiry)
+        if (now < m_serviceHostPidsCacheExpiry)
         {
-            return m_servicesPid;
+            return;
         }
         // Cache expired — fall through to refresh
-        m_servicesPidCached = false;
+        m_serviceHostPidsCached = false;
     }
 
-    // Find services.exe PID via process snapshot (RAII)
+    m_servicesPid = 0;
+    m_svchostPids.clear();
+
+    // Single snapshot to find both services.exe and all svchost.exe instances (RAII)
     SnapshotHandle hSnapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
     if (!hSnapshot)
     {
-        return 0;
+        return;
     }
 
     PROCESSENTRY32W pe = {};
@@ -926,14 +1028,16 @@ DWORD ProcessTracker::GetServicesPid() const
             if (_wcsicmp(pe.szExeFile, L"services.exe") == 0)
             {
                 m_servicesPid = pe.th32ProcessID;
-                m_servicesPidCached = true;
-                m_servicesPidCacheExpiry = GetTickCount64() + SERVICES_PID_CACHE_TTL_MS;
-                return m_servicesPid;
+            }
+            else if (_wcsicmp(pe.szExeFile, L"svchost.exe") == 0)
+            {
+                m_svchostPids.insert(pe.th32ProcessID);
             }
         } while (Process32NextW(hSnapshot.Get(), &pe));
     }
 
-    return 0;
+    m_serviceHostPidsCached = true;
+    m_serviceHostPidsCacheExpiry = GetTickCount64() + SERVICES_PID_CACHE_TTL_MS;
 }
 
 void ProcessTracker::InitExcludedPathPrefixes()
@@ -994,14 +1098,15 @@ void ProcessTracker::InitExcludedPathPrefixes()
             AddPrefix(std::wstring(buffer, len), "ProgramFiles(x86)");
         }
     }
-    {
-        wchar_t buffer[MAX_PATH] = {};
-        DWORD len = GetEnvironmentVariableW(L"ProgramData", buffer, MAX_PATH);
-        if (len > 0 && len < MAX_PATH)
-        {
-            AddPrefix(std::wstring(buffer, len), "ProgramData");
-        }
-    }
+    // NOTE: %ProgramData% is intentionally NOT excluded.
+    // Unlike %ProgramFiles% (admin-write-only ACL), ProgramData is world-writable
+    // by default. Attackers, scripts, and automation tools commonly drop portable
+    // binaries there. Excluding it would create a blind spot for:
+    //   - Malware staging and persistence (e.g., C:\ProgramData\malware.exe)
+    //   - Shadow IT portable applications
+    //   - Scripted deployments bypassing MSI/AppX installers
+    // Software properly installed via MSI under ProgramData is already captured
+    // by the inventory; arbitrary executables are not, and must be tracked.
 
     LogError("[+] ProcessTracker: Initialized " + std::to_string(m_excludedPathPrefixes.size()) +
              " managed path exclusion prefixes");
@@ -1285,7 +1390,8 @@ const ProcessTracker* tracker)
         return processes;
     }
 
-    // First pass: collect all PROCESSENTRY32W entries into a vector and find services.exe PID.
+    // First pass: collect all PROCESSENTRY32W entries into a vector and find
+    // services.exe PID and all svchost.exe PIDs from the same snapshot.
     // This allows a single snapshot walk followed by filtering, avoiding iterator invalidation.
     struct ProcessEntry
     {
@@ -1294,6 +1400,7 @@ const ProcessTracker* tracker)
     };
     std::vector<ProcessEntry> allEntries;
     DWORD servicesPid = 0;
+    std::unordered_set<DWORD> svchostPids;
 
     PROCESSENTRY32W pe = {};
     pe.dwSize = sizeof(pe);
@@ -1305,6 +1412,10 @@ const ProcessTracker* tracker)
             if (_wcsicmp(pe.szExeFile, L"services.exe") == 0)
             {
                 servicesPid = pe.th32ProcessID;
+            }
+            else if (_wcsicmp(pe.szExeFile, L"svchost.exe") == 0)
+            {
+                svchostPids.insert(pe.th32ProcessID);
             }
 
             allEntries.push_back({ pe.th32ProcessID, pe.th32ParentProcessID });
@@ -1329,8 +1440,15 @@ const ProcessTracker* tracker)
             continue;
         }
 
-        // Skip processes whose parent is services.exe (service host processes)
+        // Skip processes whose parent is services.exe or svchost.exe.
+        // services.exe spawns standalone service processes; svchost.exe hosts
+        // shared-process services and spawns worker child processes.
         if (servicesPid != 0 && entry.parentProcessId == servicesPid)
+        {
+            continue;
+        }
+
+        if (svchostPids.count(entry.parentProcessId) > 0)
         {
             continue;
         }

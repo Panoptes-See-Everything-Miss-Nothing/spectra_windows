@@ -152,7 +152,7 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
     {
     case SERVICE_CONTROL_STOP:
         LogError("[!] Service STOP command received");
-        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 30000);
+        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 120000);
         
         // Signal the worker thread to stop
         if (g_hStopEvent)
@@ -162,7 +162,7 @@ DWORD WINAPI ServiceMain::ServiceControlHandler(DWORD dwControl, DWORD dwEventTy
 
     case SERVICE_CONTROL_SHUTDOWN:
         LogError("[!] System SHUTDOWN detected");
-        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 30000);
+        ReportServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 120000);
         
         // Signal the worker thread to stop
         if (g_hStopEvent)
@@ -279,8 +279,59 @@ DWORD WINAPI ServiceMain::ServiceWorkerThread(LPVOID lpParam)
         // collection (up to 24 hours of data) would be lost on service stop
         // or system reboot. CollectAndReset() inside GenerateProcessJSON()
         // drains the buffer, so the tracker can be stopped cleanly afterward.
+        //
+        // IMPORTANT: Only flush process data here, NOT the full inventory.
+        // PerformDataCollection() runs the entire inventory pipeline (VSS
+        // snapshots, modern app enumeration, Windows Update search) which
+        // takes 3+ minutes and causes SERVICE_STOP_PENDING timeouts.
         LogError("[+] Flushing process data before shutdown...");
-        PerformDataCollection();
+        try
+        {
+            std::wstring outputDir = ServiceConfig::GetOutputDirectory();
+            std::string processData = GenerateProcessJSON();
+
+            std::wstring processFile = outputDir + L"\\processes.json";
+            std::ofstream procOutFile(processFile, std::ios::out | std::ios::trunc);
+            if (procOutFile.is_open())
+            {
+                procOutFile << processData;
+                procOutFile.close();
+                LogError("[+] Process JSON flushed to: " + WideToUtf8(processFile));
+            }
+            else
+            {
+                LogError("[-] Failed to write process JSON during shutdown flush");
+            }
+        }
+        catch (const std::exception& ex)
+        {
+            LogError("[-] Exception during shutdown process flush: " + std::string(ex.what()));
+        }
+        catch (...)
+        {
+            LogError("[-] Unknown exception during shutdown process flush");
+        }
+
+        // Log ETW/process tracker diagnostics before stopping.
+        // Gives operators visibility into whether real-time tracking was healthy
+        // during this service run (events received, filtered, deduplicated).
+        {
+            ProcessTrackerDiagnostics diag = g_processTracker.GetDiagnostics();
+            std::string sourceName;
+            switch (diag.activeSource)
+            {
+            case ProcessTrackingSource::EtwKernelProcess: sourceName = "ETW (Kernel-Process)"; break;
+            case ProcessTrackingSource::SysmonEventLog:   sourceName = "Sysmon (Event Log)";   break;
+            case ProcessTrackingSource::Disabled:         sourceName = "Disabled";              break;
+            default:                                      sourceName = "None";                  break;
+            }
+            LogError("[+] ProcessTracker diagnostics at shutdown:");
+            LogError("[+]   Active source:            " + sourceName);
+            LogError("[+]   Total events received:    " + std::to_string(diag.totalEventsReceived));
+            LogError("[+]   Events deduplicated out:  " + std::to_string(diag.eventsDeduplicatedOut));
+            LogError("[+]   Service processes excluded:" + std::to_string(diag.serviceProcessesExcluded));
+            LogError("[+]   Managed path excluded:    " + std::to_string(diag.managedPathProcessesExcluded));
+        }
 
         // Stop real-time process tracking
         g_processTracker.Stop();
