@@ -6,6 +6,7 @@
 #include <tdh.h>
 #include <psapi.h>
 #include <winevt.h>
+#include <winver.h>
 #include <iomanip>
 #include <chrono>
 #include <sstream>
@@ -13,6 +14,7 @@
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "tdh.lib")
+#pragma comment(lib, "version.lib")
 
 // ============================================================================
 // RAII Handle Wrappers
@@ -619,6 +621,7 @@ void ProcessTracker::HandleProcessStartEvent(PEVENT_RECORD pEventRecord)
     info.parentProcessId = parentProcessId;
     info.parentImagePath = GetProcessImagePath(parentProcessId);
     info.firstSeenTimestamp = GetCurrentTimestamp();
+    info.fileVersion = GetFileVersion(info.imagePath);
     info.isServiceProcess = false;
 
     // Add to observed processes (with buffer cap to prevent unbounded memory growth)
@@ -1060,6 +1063,94 @@ std::wstring ProcessTracker::GetCurrentTimestamp()
     return wss.str();
 }
 
+std::wstring ProcessTracker::GetFileVersion(const std::wstring& filePath)
+{
+    if (filePath.empty())
+    {
+        return {};
+    }
+
+    // Map the PE into user-mode address space as raw data.
+    // LOAD_LIBRARY_AS_IMAGE_RESOURCE: map sections at virtual addresses so
+    //   FindResourceW can walk the resource directory tree correctly.
+    // LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE: prevent concurrent modification
+    //   of the mapping while we read from it.
+    // No DllMain execution, no import resolution, no compatibility shims.
+    LibraryHandle hModule(LoadLibraryExW(
+        filePath.c_str(),
+        nullptr,
+        LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE));
+
+    if (!hModule)
+    {
+        return {};
+    }
+
+    // Locate the RT_VERSION resource (resource type 16, resource ID 1)
+    const HRSRC hResInfo = FindResourceW(hModule.Get(), MAKEINTRESOURCEW(1), RT_VERSION);
+    if (hResInfo == nullptr)
+    {
+        return {};
+    }
+
+    const DWORD resSize = SizeofResource(hModule.Get(), hResInfo);
+    if (resSize == 0)
+    {
+        return {};
+    }
+
+    const HGLOBAL hResData = LoadResource(hModule.Get(), hResInfo);
+    if (hResData == nullptr)
+    {
+        return {};
+    }
+
+    const void* pRawData = LockResource(hResData);
+    if (pRawData == nullptr)
+    {
+        return {};
+    }
+
+    // Copy into a writable buffer. The mapped resource pages are read-only,
+    // and VerQueryValueW may write alignment fixups into the buffer.
+    std::vector<BYTE> versionData(
+        static_cast<const BYTE*>(pRawData),
+        static_cast<const BYTE*>(pRawData) + resSize);
+
+    // Parse VS_FIXEDFILEINFO from the raw resource data.
+    // VerQueryValueW is a pure in-memory parser -- no version shim applied here.
+    VS_FIXEDFILEINFO* pFixedInfo = nullptr;
+    UINT fixedInfoSize = 0;
+
+    if (!VerQueryValueW(versionData.data(), L"\\",
+                        reinterpret_cast<LPVOID*>(&pFixedInfo), &fixedInfoSize))
+    {
+        return {};
+    }
+
+    if (pFixedInfo == nullptr || fixedInfoSize < sizeof(VS_FIXEDFILEINFO))
+    {
+        return {};
+    }
+
+    // Validate the magic signature (0xFEEF04BD)
+    if (pFixedInfo->dwSignature != VS_FFI_SIGNATURE)
+    {
+        return {};
+    }
+
+    // Extract Major.Minor.Build.Revision from dwFileVersionMS / dwFileVersionLS
+    const DWORD major    = HIWORD(pFixedInfo->dwFileVersionMS);
+    const DWORD minor    = LOWORD(pFixedInfo->dwFileVersionMS);
+    const DWORD build    = HIWORD(pFixedInfo->dwFileVersionLS);
+    const DWORD revision = LOWORD(pFixedInfo->dwFileVersionLS);
+
+    return std::to_wstring(major) + L"." +
+           std::to_wstring(minor) + L"." +
+           std::to_wstring(build) + L"." +
+           std::to_wstring(revision);
+}
+
 // ============================================================================
 // Snapshot-based Collection (point-in-time enumeration)
 // ============================================================================
@@ -1169,6 +1260,7 @@ std::vector<RunningProcessInfo> SnapshotRunningProcesses(
         info.parentProcessId = entry.parentProcessId;
         info.parentImagePath = ProcessTracker::GetProcessImagePath(entry.parentProcessId);
         info.firstSeenTimestamp = ProcessTracker::GetCurrentTimestamp();
+        info.fileVersion = ProcessTracker::GetFileVersion(info.imagePath);
         info.isServiceProcess = false;
 
         processes.push_back(std::move(info));

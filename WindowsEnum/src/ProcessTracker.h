@@ -23,6 +23,7 @@ struct RunningProcessInfo
     DWORD parentProcessId = 0;         // PID of the parent process
     std::wstring parentImagePath;       // Image path of the parent process (best-effort)
     std::wstring firstSeenTimestamp;    // ISO 8601 timestamp when first observed
+    std::wstring fileVersion;           // PE file version from RT_VERSION resource (e.g., "114.0.5735.199")
     bool isServiceProcess = false;      // True if process is a known Windows service
 };
 
@@ -139,6 +140,11 @@ public:
 
     // Build ISO 8601 timestamp string
     static std::wstring GetCurrentTimestamp();
+
+    // Extract PE file version (Major.Minor.Build.Revision) from the RT_VERSION resource.
+    // Uses LoadLibraryExW(DATAFILE) to map the PE without executing code or applying
+    // the GetFileVersionInfo compatibility shim. Returns empty string on failure.
+    static std::wstring GetFileVersion(const std::wstring& filePath);
 
 private:
 

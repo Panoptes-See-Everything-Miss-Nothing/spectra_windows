@@ -846,7 +846,8 @@ std::string GenerateProcessJSON()
         out << "      \"processId\": " << proc.processId << ",\n";
         out << "      \"parentProcessId\": " << proc.parentProcessId << ",\n";
         out << "      \"parentImagePath\": " << JsonEscape(proc.parentImagePath) << ",\n";
-        out << "      \"firstSeenTimestamp\": " << JsonEscape(proc.firstSeenTimestamp) << "\n";
+        out << "      \"firstSeenTimestamp\": " << JsonEscape(proc.firstSeenTimestamp) << ",\n";
+        out << "      \"fileVersion\": " << JsonEscape(proc.fileVersion) << "\n";
         out << "    }";
         if (i + 1 < runningProcesses.size()) out << ",";
         out << "\n";
