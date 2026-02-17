@@ -791,7 +791,7 @@ std::string GenerateProcessJSON()
 
     // Supplement with a point-in-time snapshot of currently running processes.
     // This catches processes that were already running before the ETW session started.
-    std::vector<RunningProcessInfo> snapshotProcesses = SnapshotRunningProcesses(serviceProcessIds);
+    std::vector<RunningProcessInfo> snapshotProcesses = SnapshotRunningProcesses(serviceProcessIds, tracker);
 
     // Merge: add snapshot processes that aren't already in the ETW set (deduplicate by PID)
     {
@@ -874,6 +874,7 @@ std::string GenerateProcessJSON()
         out << "    \"totalEventsReceived\": " << trackerDiagnostics.totalEventsReceived << ",\n";
         out << "    \"eventsDeduplicatedOut\": " << trackerDiagnostics.eventsDeduplicatedOut << ",\n";
         out << "    \"serviceProcessesExcluded\": " << trackerDiagnostics.serviceProcessesExcluded << ",\n";
+        out << "    \"managedPathProcessesExcluded\": " << trackerDiagnostics.managedPathProcessesExcluded << ",\n";
         out << "    \"lastErrorMessage\": " << JsonEscape(trackerDiagnostics.lastErrorMessage) << ",\n";
         out << "    \"processesCollected\": " << runningProcesses.size() << "\n";
         out << "  }\n";

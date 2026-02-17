@@ -44,8 +44,11 @@ namespace ServiceConfig
     constexpr const wchar_t* CONFIG_DIRECTORY = DEFAULT_CONFIG_DIRECTORY;
     constexpr const wchar_t* TEMP_DIRECTORY = L"C:\\ProgramData\\Panoptes\\Spectra\\Temp";
     
-    // Required privileges (declared to SCM for transparency)
-    constexpr const wchar_t* REQUIRED_PRIVILEGES = L"SeBackupPrivilege\0SeRestorePrivilege\0\0";
+    // Required privileges (declared to SCM for transparency).
+    // SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO strips all undeclared privileges
+    // from the service token. SeSystemProfilePrivilege is required for ETW
+    // session creation (StartTraceW) — without it, SYSTEM gets ACCESS_DENIED.
+    constexpr const wchar_t* REQUIRED_PRIVILEGES = L"SeBackupPrivilege\0SeRestorePrivilege\0SeSystemProfilePrivilege\0\0";
     
     // Version information
     constexpr const wchar_t* VERSION = L"1.0.0";

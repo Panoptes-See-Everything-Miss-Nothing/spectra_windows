@@ -46,6 +46,7 @@ struct ProcessTrackerDiagnostics
     DWORD totalEventsReceived = 0;              // Total process-start events received
     DWORD eventsDeduplicatedOut = 0;            // Events dropped by dedup filter
     DWORD serviceProcessesExcluded = 0;         // Events excluded as service processes
+    DWORD managedPathProcessesExcluded = 0;     // Events excluded by managed path prefix filter
     std::wstring lastErrorMessage;              // Human-readable last error
 };
 
@@ -120,11 +121,17 @@ private:
     // Purge expired deduplication entries
     void PurgeExpiredDeduplicationEntries();
 
-    // Check if a process is a known Windows service by its PID or parent
+    // Check if a process is a known Windows service by its PID or parent.
+    // Matches processes whose parent is services.exe or any svchost.exe instance.
     bool IsServiceProcess(DWORD processId, DWORD parentProcessId) const;
 
-    // Find the PID of services.exe (cached)
-    DWORD GetServicesPid() const;
+    // Resolve PIDs of services.exe and all svchost.exe instances (cached with TTL).
+    // Populates m_servicesPid and m_svchostPids from a single process snapshot.
+    void RefreshServiceHostPids() const;
+
+    // Resolve managed directory prefixes at runtime from environment.
+    // Called once during Start() to avoid per-event syscalls.
+    void InitExcludedPathPrefixes();
 
 public:
     // These helpers are public so that SnapshotRunningProcesses() can reuse them.
@@ -145,6 +152,12 @@ public:
     // Uses LoadLibraryExW(DATAFILE) to map the PE without executing code or applying
     // the GetFileVersionInfo compatibility shim. Returns empty string on failure.
     static std::wstring GetFileVersion(const std::wstring& filePath);
+
+    // Check if a process image path falls under a managed/OS directory
+    // (e.g., Windows, Program Files) whose software is already inventoried.
+    // Returns true if the process should be excluded from collection.
+    // Public so SnapshotRunningProcesses() can reuse it.
+    bool IsExcludedByPath(const std::wstring& imagePath) const;
 
 private:
 
@@ -175,18 +188,31 @@ private:
     // Stop signal
     HANDLE m_stopEvent = nullptr;
 
+    // Sysmon startup synchronization: signaled by PollSysmonEvents() after
+    // EvtSubscribe succeeds or fails, so StartSysmonFallback() can return
+    // an accurate result instead of racing the polling thread.
+    HANDLE m_sysmonReadyEvent = nullptr;
+    std::atomic<bool> m_sysmonSubscribeSucceeded{ false };
+
     // Diagnostics (atomic where possible, mutex-protected otherwise)
     mutable std::mutex m_diagMutex;
     ProcessTrackerDiagnostics m_diagnostics = {};
 
     std::atomic<bool> m_isRunning{ false };
 
-    // Cached services.exe PID with TTL-based expiry.
-    // services.exe PID is stable under normal operation, but we refresh
-    // periodically (every 5 minutes) for correctness in edge cases.
+    // Managed/OS directory prefixes resolved at startup.
+    // Processes under these paths are excluded because their software
+    // is already captured by the inventory (Uninstall registry, MSI, AppX).
+    // Stored as lowercase for case-insensitive prefix matching.
+    std::vector<std::wstring> m_excludedPathPrefixes;
+
+    // Cached service host PIDs with TTL-based expiry.
+    // services.exe PID is stable; svchost.exe PIDs are mostly stable but can
+    // change when service groups start/stop. Refreshed every 5 minutes.
     mutable DWORD m_servicesPid = 0;
-    mutable bool m_servicesPidCached = false;
-    mutable ULONGLONG m_servicesPidCacheExpiry = 0;
+    mutable std::unordered_set<DWORD> m_svchostPids;
+    mutable bool m_serviceHostPidsCached = false;
+    mutable ULONGLONG m_serviceHostPidsCacheExpiry = 0;
 
     // ETW session name (must be unique system-wide)
     static constexpr const wchar_t* ETW_SESSION_NAME = L"PanoptesSpectraProcessTracker";
@@ -202,6 +228,7 @@ private:
 // Snapshot-based collection: enumerate currently running processes.
 // Used as a one-time collection during GenerateJSON() to capture processes
 // that were already running before the ETW session started.
-// Excludes Windows service processes.
+// Excludes Windows service processes and managed path processes.
 std::vector<RunningProcessInfo> SnapshotRunningProcesses(
-    const std::vector<DWORD>& serviceProcessIds);
+    const std::vector<DWORD>& serviceProcessIds,
+    const ProcessTracker* tracker = nullptr);
