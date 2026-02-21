@@ -48,6 +48,12 @@ std::string GenerateJSON();
 // Contains ETW real-time data + point-in-time snapshot, process tracker diagnostics.
 std::string GenerateProcessJSON();
 
+// Generate JSON for Microsoft Patch Tuesday inventory.
+// Contains OS build + UBR, key binary file versions, Office C2R state,
+// reboot/CBS pending state, and WUA config. The backend correlates this
+// against MSRC feeds to determine patch compliance.
+std::string GenerateMsptInventoryJSON();
+
 // Directory Security Validation Functions
 
 // Check if a path is a directory (not a file)

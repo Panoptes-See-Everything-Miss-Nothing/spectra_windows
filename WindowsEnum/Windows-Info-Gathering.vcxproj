@@ -201,6 +201,7 @@
     <ClCompile Include="src\Service\ServiceTamperProtection.cpp" />
     <ClCompile Include="src\WindowsServices.cpp" />
     <ClCompile Include="src\ProcessTracker.cpp" />
+    <ClCompile Include="src\PatchTuesdayInventory.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\OsVersionInfo.h" />
@@ -224,6 +225,7 @@
     <ClInclude Include="src\Service\ServiceTamperProtection.h" />
     <ClInclude Include="src\WindowsServices.h" />
     <ClInclude Include="src\ProcessTracker.h" />
+    <ClInclude Include="src\PatchTuesdayInventory.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />

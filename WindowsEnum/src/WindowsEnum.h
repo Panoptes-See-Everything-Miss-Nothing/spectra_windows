@@ -14,3 +14,4 @@
 #include "OsVersionInfo.h"
 #include "WindowsServices.h"
 #include "ProcessTracker.h"
+#include "PatchTuesdayInventory.h"

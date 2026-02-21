@@ -456,6 +456,25 @@ void ServiceMain::PerformDataCollection()
             LogError("[-] Failed to write process JSON file: " + WideToUtf8(processFile));
         }
 
+        // Generate and write MSPT (Microsoft Patch Tuesday) inventory JSON.
+        // Contains OS build + UBR, key binary file versions, Office C2R state,
+        // reboot/CBS pending state, and WUA config. ~1-5 seconds, no network I/O.
+        // The backend correlates this against MSRC feeds for patch compliance.
+        std::string msptData = GenerateMsptInventoryJSON();
+
+        std::wstring msptFile = outputDir + L"\\mspt_inventory.json";
+        std::ofstream msptOutFile(msptFile, std::ios::out | std::ios::trunc);
+        if (msptOutFile.is_open())
+        {
+            msptOutFile << msptData;
+            msptOutFile.close();
+            LogError("[+] MSPT inventory JSON written to: " + WideToUtf8(msptFile));
+        }
+        else
+        {
+            LogError("[-] Failed to write MSPT inventory JSON file: " + WideToUtf8(msptFile));
+        }
+
         LogError("[+] Data collection completed successfully");
     }
     catch (const std::exception& ex)
