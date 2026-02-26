@@ -90,17 +90,27 @@ The goal is simple: give the security community a tool that's honest about what'
 
 | Category | Details |
 |---|---|
-| **Win32 / Registry Apps** | Enumerates `HKLM` and per-user `HKCU` Uninstall keys for all user profiles (loads offline hives via `RegLoadKey`). |
-| **MSI Products** | Queries the Windows Installer API (`MsiEnumProductsEx`) for system-wide and per-user MSI packages. |
-| **AppX / MSIX Packages** | Enumerates modern Store, sideloaded, and provisioned packages via the Windows Package Manager WinRT API. |
-| **Installed Updates (KBs)** | Collects installed Windows updates with MSRC severity, KB article IDs, and install dates via the Windows Update Agent COM API. |
+| **Win32 / Registry Apps** | Enumerates `HKLM` and per-user `HKCU` Uninstall keys for all user profiles (loads offline hives via `RegLoadKey`). Results are grouped per-user with SID in the output. |
+| **MSI Products** | Queries the Windows Installer API (`MsiEnumProductsEx`) for system-wide and per-user MSI packages, including product code, package code, install source, and assignment type. |
+| **AppX / MSIX Packages** | Enumerates modern Store, sideloaded, and provisioned packages via the Windows Package Manager WinRT API. Captures publisher ID, resource ID, framework/bundle/dev-mode flags, and per-user ownership. |
+| **Installed Updates (KBs)** | Collects installed Windows updates with MSRC severity, KB article IDs, categories, and install dates via the Windows Update Agent COM API — the data needed to assess Patch Tuesday compliance. |
 | **Windows Services** | Lists all installed Win32 services with start type, running state, binary path, and service account. |
-| **OS Version Info** | Reads the `ntoskrnl.exe` file-version resource for accurate build/UBR data; detects processor architecture. |
+| **OS Version Info** | Reads the `ntoskrnl.exe` file-version resource for accurate build/UBR data (maps directly to specific Patch Tuesday cumulative updates); detects processor architecture. |
 | **Machine & Network Info** | Collects NetBIOS name, DNS/FQDN, and local IP addresses (IPv4 + IPv6). |
 | **User Profiles** | Enumerates all local user profiles (SID, profile path, hive-loaded state). |
-| **Process Tracking** | Real-time process execution monitoring via ETW (`Microsoft-Windows-Kernel-Process`) with automatic Sysmon event-log fallback; deduplication, PE file-version extraction, and managed-path exclusion. |
+| **Process Tracking** | Real-time process execution monitoring via ETW (`Microsoft-Windows-Kernel-Process`) with automatic Sysmon event-log fallback. Captures image path, command line, user SID/username, parent process (PID + image path), and PE file version. Includes point-in-time snapshot (`CreateToolhelp32Snapshot`) to catch processes running before the ETW session started. Service processes are excluded (by SCM PID, `services.exe`/`svchost.exe` parentage, and managed-path prefixes). Deduplication, per-event diagnostics, and shutdown flush of buffered data before service stop. |
 | **Persistent Machine ID** | Generates a cryptographically unique `SPECTRA-{GUID}` identifier stored in the registry, surviving reboots and reinstalls. |
 | **VSS Snapshots** | RAII-managed Volume Shadow Copy snapshots for safe, consistent reads of locked system files. |
+
+### Patch Tuesday Coverage
+
+Spectra already collects the data needed to evaluate Patch Tuesday compliance on every Windows endpoint:
+
+- **OS build and UBR** from the `ntoskrnl.exe` file-version resource — this maps 1:1 to specific cumulative updates, making it possible to determine exactly which monthly rollup is installed without relying on KB enumeration alone.
+- **All installed KBs** with MSRC severity ratings (`Critical`, `Important`, etc.), update categories, and installation timestamps — queried directly from the local Windows Update Agent datastore, no WSUS or network connectivity required.
+- **Update history enrichment** — cross-references installed updates with the WUA history to capture precise install dates and operation result codes.
+
+Iris uses this data to correlate against Microsoft's published Patch Tuesday advisories and the NVD, identifying which security updates are missing and what CVEs are exposed as a result.
 
 ---
 
@@ -242,7 +252,7 @@ Replaces the binary and re-applies hardening while preserving the Machine ID, re
 
 ## Configuration
 
-Runtime configuration is stored in the registry at `HKLM\SOFTWARE\Panoptes\Spectra` and can be modified without recompilation (e.g., via GPO or MSI custom actions).
+Runtime configuration is stored in the registry at `HKLM\SOFTWARE\Panoptes\Spectra` and can be modified without recompilation (e.g., via GPO or MSI custom actions). Configuration is reloaded from the registry at the start of each collection cycle — changes take effect without restarting the service.
 
 | Value Name | Type | Default | Description |
 |---|---|---|---|
@@ -270,25 +280,75 @@ The service produces two JSON files per collection cycle in the configured outpu
 
 | File | Contents |
 |---|---|
-| `inventory.json` | Full system inventory: OS info, machine identity, network info, user profiles, Win32/MSI/AppX packages, installed updates, Windows services. |
-| `processes.json` | Running-process snapshot enriched with real-time ETW data, PE file versions, and tracker diagnostics. |
+| `inventory.json` | Machine identity, network info, per-user application inventory (Win32/MSI/AppX grouped by user with SID), OS version (via `ntoskrnl.exe`), installed updates with MSRC metadata, Windows services, and process tracking summary. |
+| `processes.json` | Non-service processes observed via real-time ETW monitoring + point-in-time snapshot, with image path, command line, user, parent process, PE file version, and full tracker diagnostics. |
 
-### Sample `inventory.json` fragment
+### Sample `inventory.json` structure
 
 ```json
 {
   "spectraMachineId": "SPECTRA-A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
   "collectionTimestamp": "2025-01-15T14:30:45",
   "agentVersion": "1.0.0",
-  "osInfo": { "osDisplayName": "Microsoft Windows 11 Pro 64-bit", ... },
-  "machineNames": { "netbiosName": "WORKSTATION01", "dnsName": "workstation01.corp.local" },
+  "machineNetBiosName": "WORKSTATION01",
+  "machineDnsName": "workstation01.corp.local",
   "ipAddresses": ["10.0.1.42", "fe80::1"],
-  "userProfiles": [ ... ],
-  "win32Apps": [ ... ],
-  "msiProducts": [ ... ],
-  "appxPackages": [ ... ],
-  "installedUpdates": [ ... ],
-  "windowsServices": [ ... ]
+  "installedAppsByUser": [
+    {
+      "user": "SYSTEM",
+      "userSID": "S-1-5-18",
+      "applications": [ { "displayName": "...", "displayVersion": "...", "publisher": "..." } ],
+      "msiProducts": [ { "productCode": "...", "productName": "...", "productVersion": "..." } ],
+      "modernAppPackages": [ { "packageFullName": "...", "version": "...", "isFramework": false } ]
+    }
+  ],
+  "installedUpdates": {
+    "osVersion": {
+      "os": "Microsoft Windows 11 Pro 64-bit",
+      "ntoskrnl.exeVersion": "10.0.26100.4351",
+      "processorArchitecture": "x64"
+    },
+    "updates": [
+      {
+        "title": "2025-01 Cumulative Update for Windows 11...",
+        "kbArticleIds": ["5050009"],
+        "msrcSeverity": "Critical",
+        "installedDate": "2025-01-15T03:00:00"
+      }
+    ]
+  },
+  "windowsServices": [ { "serviceName": "wuauserv", "displayName": "Windows Update", "startType": "Manual", "currentState": "Stopped" } ],
+  "processTrackingSummary": { "activeSource": "EtwKernelProcess", "isActive": true, "totalEventsReceived": 1247 }
+}
+```
+
+### Sample `processes.json` structure
+
+```json
+{
+  "spectraMachineId": "SPECTRA-A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+  "collectionTimestamp": "2025-01-15T14:30:45",
+  "agentVersion": "1.0.0",
+  "runningProcesses": [
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\tool.exe",
+      "commandLine": "tool.exe --scan",
+      "userSid": "S-1-5-21-...",
+      "username": "admin",
+      "processId": 5678,
+      "parentProcessId": 1234,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2025-01-15T14:25:12",
+      "fileVersion": "2.1.0.0"
+    }
+  ],
+  "processTrackerDiagnostics": {
+    "activeSource": "EtwKernelProcess",
+    "totalEventsReceived": 1247,
+    "eventsDeduplicatedOut": 83,
+    "serviceProcessesExcluded": 412,
+    "managedPathProcessesExcluded": 298
+  }
 }
 ```
 
