@@ -75,7 +75,7 @@
               └───────────────┘
 ```
 
-The application is a single native C++ executable (`Panoptes-Spectra.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
+The application is a single native C++ executable (`Panoptes.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
 
 ---
 
@@ -96,7 +96,7 @@ The application is a single native C++ executable (`Panoptes-Spectra.exe`) that 
 
 ### Prerequisites
 
-- **Visual Studio 2022** (v145 platform toolset) or later
+- **Visual Studio 2025** (v145 platform toolset) or later
 - **Windows 10 SDK** (10.0 or later)
 - **C++20** language standard
 
@@ -105,7 +105,7 @@ The application is a single native C++ executable (`Panoptes-Spectra.exe`) that 
 1. Open `Panoptes.sln`.
 2. Select the desired configuration (`Release|x64` recommended).
 3. Build the solution (**Ctrl+Shift+B**).
-4. The output binary is located at `bin\x64\Release\Panoptes-Spectra.exe`.
+4. The output binary is located at `bin\x64\Release\Panoptes.exe`.
 
 ### Building from the command line
 
@@ -120,7 +120,7 @@ msbuild Panoptes.sln /p:Configuration=Release /p:Platform=x64
 ## Usage
 
 ```
-Panoptes-Spectra.exe [option]
+Panoptes.exe [option]
 
 Options:
   /install      Install as a Windows service (auto-upgrades if already installed)
@@ -128,7 +128,7 @@ Options:
   /uninstall    Remove the Windows service and all artifacts
   /console      Run a one-time data collection in the console
   /test         Run data collection and display a summary
-  /? --help     Show usage information
+  /? -? --help /help  Show usage information
   (no args)     Launched by the Service Control Manager (SCM)
 ```
 
@@ -136,7 +136,7 @@ Options:
 
 ```powershell
 # Run as SYSTEM for full visibility (Administrator is NOT sufficient)
-psexec -s -i .\Panoptes-Spectra.exe /console
+psexec -s -i .\Panoptes.exe /console
 ```
 
 ---
@@ -147,7 +147,7 @@ psexec -s -i .\Panoptes-Spectra.exe /console
 
 ```powershell
 # Run from an elevated (Administrator) prompt
-.\Panoptes-Spectra.exe /install
+.\Panoptes.exe /install
 ```
 
 This will:
@@ -165,13 +165,13 @@ This will:
 sc start PanoptesSpectra      # Start
 sc stop  PanoptesSpectra      # Stop
 sc query PanoptesSpectra      # Check status
-.\Panoptes-Spectra.exe /uninstall   # Uninstall
+.\Panoptes.exe /uninstall   # Uninstall
 ```
 
 ### Upgrade in-place
 
 ```powershell
-.\Panoptes-Spectra.exe /upgrade
+.\Panoptes.exe /upgrade
 ```
 
 Replaces the binary and re-applies hardening while preserving the Machine ID, registry configuration, logs, and output data.
@@ -288,12 +288,19 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │
 ├── docs/
 │   ├── DEPLOYMENT_CHECKLIST.md
+│   ├── IMPLEMENTATION_COMPLETE.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   ├── MACHINE_ID_IMPLEMENTATION.md
+│   ├── PACKAGE_MANAGER_API_MIGRATION.md
 │   ├── QUICKSTART.md
 │   ├── QUICK_REFERENCE.md
 │   ├── REBUILD_INSTRUCTIONS.md
+│   ├── SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md
+│   ├── VSS_IMPLEMENTATION_SUMMARY.md
+│   ├── WINDOWS7_DELAY_LOAD_REQUIRED.md
 │   ├── WINDOWS_SERVICE_GUIDE.md
 │   ├── WINDOWS_VERSION_COMPATIBILITY.md
-│   └── ... (additional implementation docs)
+│   └── WINRT_SETUP_INSTRUCTIONS.md
 │
 ├── bin/                          # Build output (git-ignored)
 └── .github/
@@ -318,6 +325,11 @@ Detailed guides are available in the [`docs/`](docs/) directory:
 | [MACHINE_ID_IMPLEMENTATION.md](docs/MACHINE_ID_IMPLEMENTATION.md) | Machine ID design and implementation details |
 | [VSS_IMPLEMENTATION_SUMMARY.md](docs/VSS_IMPLEMENTATION_SUMMARY.md) | Volume Shadow Copy integration summary |
 | [SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md](docs/SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md) | Secure temporary directory design |
+| [IMPLEMENTATION_COMPLETE.md](docs/IMPLEMENTATION_COMPLETE.md) | Windows service implementation completion summary |
+| [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) | Machine ID, VSS, and feature implementation details |
+| [PACKAGE_MANAGER_API_MIGRATION.md](docs/PACKAGE_MANAGER_API_MIGRATION.md) | Migration from registry-based to WinRT Package Manager API |
+| [WINDOWS7_DELAY_LOAD_REQUIRED.md](docs/WINDOWS7_DELAY_LOAD_REQUIRED.md) | Delay-load configuration for Windows 7 compatibility |
+| [WINRT_SETUP_INSTRUCTIONS.md](docs/WINRT_SETUP_INSTRUCTIONS.md) | C++/WinRT setup and build instructions |
 
 ---
 
