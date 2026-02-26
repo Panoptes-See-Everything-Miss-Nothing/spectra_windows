@@ -1,1 +1,326 @@
-# Spectra
+# Panoptes Spectra — Windows System Inventory Agent
+
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg)](https://www.microsoft.com/windows)
+[![Architecture](https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg)](#build)
+[![License](https://img.shields.io/badge/license-Proprietary-lightgrey.svg)](#license)
+
+**Panoptes Spectra** is an enterprise-grade, native Windows service that collects comprehensive system inventory data for vulnerability management. It runs as `LocalSystem`, uses only native Win32/COM/WinRT APIs (no third-party dependencies), and outputs machine-readable JSON for downstream consumption.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [System Requirements](#system-requirements)
+- [Build](#build)
+- [Usage](#usage)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Output](#output)
+- [Security](#security)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [License](#license)
+
+---
+
+## Features
+
+| Category | Details |
+|---|---|
+| **Win32 / Registry Apps** | Enumerates `HKLM` and per-user `HKCU` Uninstall keys for all user profiles (loads offline hives via `RegLoadKey`). |
+| **MSI Products** | Queries the Windows Installer API (`MsiEnumProductsEx`) for system-wide and per-user MSI packages. |
+| **AppX / MSIX Packages** | Enumerates modern Store, sideloaded, and provisioned packages via the Windows Package Manager WinRT API. |
+| **Installed Updates (KBs)** | Collects installed Windows updates with MSRC severity, KB article IDs, and install dates via the Windows Update Agent COM API. |
+| **Windows Services** | Lists all installed Win32 services with start type, running state, binary path, and service account. |
+| **OS Version Info** | Reads the `ntoskrnl.exe` file-version resource for accurate build/UBR data; detects processor architecture. |
+| **Machine & Network Info** | Collects NetBIOS name, DNS/FQDN, and local IP addresses (IPv4 + IPv6). |
+| **User Profiles** | Enumerates all local user profiles (SID, profile path, hive-loaded state). |
+| **Process Tracking** | Real-time process execution monitoring via ETW (`Microsoft-Windows-Kernel-Process`) with automatic Sysmon event-log fallback; deduplication, PE file-version extraction, and managed-path exclusion. |
+| **Persistent Machine ID** | Generates a cryptographically unique `SPECTRA-{GUID}` identifier stored in the registry, surviving reboots and reinstalls. |
+| **VSS Snapshots** | RAII-managed Volume Shadow Copy snapshots for safe, consistent reads of locked system files. |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Main.cpp (Entry Point)             │
+│   /install · /upgrade · /uninstall · /console · SCM │
+└────────┬────────────────────────────┬───────────────┘
+         │                            │
+   ┌─────▼──────┐            ┌───────▼────────┐
+   │  Service    │            │  Console Mode  │
+   │  Framework  │            │  (one-shot)    │
+   └─────┬──────┘            └───────┬────────┘
+         │                            │
+   ┌─────▼────────────────────────────▼───────┐
+   │          Data Collection Engine           │
+   │  ┌────────────┐  ┌───────────────────┐   │
+   │  │ Win32Apps   │  │ WinAppXPackages   │   │
+   │  │ MsiApps     │  │ AppXPackages      │   │
+   │  │ InstalledUp │  │ WindowsServices   │   │
+   │  │ OsVersion   │  │ ProcessTracker    │   │
+   │  │ MachineInfo │  │ UserProfiles      │   │
+   │  └────────────┘  └───────────────────┘   │
+   └──────────────────┬───────────────────────┘
+                      │
+              ┌───────▼───────┐
+              │  JSON Output  │
+              │ inventory.json│
+              │ processes.json│
+              └───────────────┘
+```
+
+The application is a single native C++ executable (`Panoptes-Spectra.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
+
+---
+
+## System Requirements
+
+| Requirement | Details |
+|---|---|
+| **OS** | Windows 10 / Windows Server 2016 or later |
+| **Architecture** | x64 (primary) or x86 (32-bit on 32-bit OS only) |
+| **Runtime privileges** | `LocalSystem` (NT AUTHORITY\SYSTEM) — required for `SE_BACKUP_NAME`, `SE_RESTORE_NAME`, and kernel ETW sessions |
+| **Installation privileges** | Local Administrator |
+| **Disk space** | ~50 MB for the application plus variable space for output data |
+| **Dependencies** | None — all functionality is implemented using native Windows APIs |
+
+---
+
+## Build
+
+### Prerequisites
+
+- **Visual Studio 2022** (v145 platform toolset) or later
+- **Windows 10 SDK** (10.0 or later)
+- **C++20** language standard
+
+### Building from Visual Studio
+
+1. Open `Panoptes.sln`.
+2. Select the desired configuration (`Release|x64` recommended).
+3. Build the solution (**Ctrl+Shift+B**).
+4. The output binary is located at `bin\x64\Release\Panoptes-Spectra.exe`.
+
+### Building from the command line
+
+```powershell
+msbuild Panoptes.sln /p:Configuration=Release /p:Platform=x64
+```
+
+> **Note:** The 32-bit build will refuse to run on 64-bit Windows. Always match the build architecture to the target OS.
+
+---
+
+## Usage
+
+```
+Panoptes-Spectra.exe [option]
+
+Options:
+  /install      Install as a Windows service (auto-upgrades if already installed)
+  /upgrade      Upgrade the service in-place (preserves state and Machine ID)
+  /uninstall    Remove the Windows service and all artifacts
+  /console      Run a one-time data collection in the console
+  /test         Run data collection and display a summary
+  /? --help     Show usage information
+  (no args)     Launched by the Service Control Manager (SCM)
+```
+
+### Quick test (no installation required)
+
+```powershell
+# Run as SYSTEM for full visibility (Administrator is NOT sufficient)
+psexec -s -i .\Panoptes-Spectra.exe /console
+```
+
+---
+
+## Installation
+
+### Install as a Windows service
+
+```powershell
+# Run from an elevated (Administrator) prompt
+.\Panoptes-Spectra.exe /install
+```
+
+This will:
+
+1. Copy the executable to `C:\Program Files\Panoptes\Spectra\`.
+2. Register the `PanoptesSpectra` service with `SERVICE_AUTO_START`.
+3. Apply service hardening (SID restriction, declared privileges, tamper-protection DACL).
+4. Create secure data directories under `C:\ProgramData\Panoptes\Spectra\`.
+5. Generate a persistent Machine ID in the registry.
+6. Start the service automatically.
+
+### Manage the service
+
+```powershell
+sc start PanoptesSpectra      # Start
+sc stop  PanoptesSpectra      # Stop
+sc query PanoptesSpectra      # Check status
+.\Panoptes-Spectra.exe /uninstall   # Uninstall
+```
+
+### Upgrade in-place
+
+```powershell
+.\Panoptes-Spectra.exe /upgrade
+```
+
+Replaces the binary and re-applies hardening while preserving the Machine ID, registry configuration, logs, and output data.
+
+---
+
+## Configuration
+
+Runtime configuration is stored in the registry at `HKLM\SOFTWARE\Panoptes\Spectra` and can be modified without recompilation (e.g., via GPO or MSI custom actions).
+
+| Value Name | Type | Default | Description |
+|---|---|---|---|
+| `CollectionIntervalSeconds` | `REG_DWORD` | `86400` (24 h) | Interval between data collections |
+| `OutputDirectory` | `REG_SZ` | `C:\ProgramData\Panoptes\Spectra\Output` | Directory for JSON output files |
+| `ServerUrl` | `REG_SZ` | *(empty)* | Future: endpoint for data upload |
+| `EnableDetailedLogging` | `REG_DWORD` | `0` | Enable verbose logging |
+| `EnableProcessTracking` | `REG_DWORD` | `1` | Enable ETW-based process tracking |
+
+### Examples
+
+```powershell
+# Set collection interval to 30 minutes
+reg add "HKLM\SOFTWARE\Panoptes\Spectra" /v CollectionIntervalSeconds /t REG_DWORD /d 1800 /f
+
+# Change output directory
+reg add "HKLM\SOFTWARE\Panoptes\Spectra" /v OutputDirectory /t REG_SZ /d "D:\Spectra\Output" /f
+```
+
+---
+
+## Output
+
+The service produces two JSON files per collection cycle in the configured output directory:
+
+| File | Contents |
+|---|---|
+| `inventory.json` | Full system inventory: OS info, machine identity, network info, user profiles, Win32/MSI/AppX packages, installed updates, Windows services. |
+| `processes.json` | Running-process snapshot enriched with real-time ETW data, PE file versions, and tracker diagnostics. |
+
+### Sample `inventory.json` fragment
+
+```json
+{
+  "spectraMachineId": "SPECTRA-A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+  "collectionTimestamp": "2025-01-15T14:30:45",
+  "agentVersion": "1.0.0",
+  "osInfo": { "osDisplayName": "Microsoft Windows 11 Pro 64-bit", ... },
+  "machineNames": { "netbiosName": "WORKSTATION01", "dnsName": "workstation01.corp.local" },
+  "ipAddresses": ["10.0.1.42", "fe80::1"],
+  "userProfiles": [ ... ],
+  "win32Apps": [ ... ],
+  "msiProducts": [ ... ],
+  "appxPackages": [ ... ],
+  "installedUpdates": [ ... ],
+  "windowsServices": [ ... ]
+}
+```
+
+---
+
+## Security
+
+Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
+
+| Layer | Mechanism |
+|---|---|
+| **Unquoted-path protection** | The executable path is always **quoted** at install time; the service name (`PanoptesSpectra`) contains no spaces. |
+| **Service SID restriction** | `SERVICE_SID_TYPE_RESTRICTED` creates a write-restricted token — only explicitly allowed SIDs can write. |
+| **Declared privileges** | Only `SE_BACKUP_NAME`, `SE_RESTORE_NAME`, and `SE_SYSTEM_PROFILE_NAME` are kept; all others are stripped by the SCM. |
+| **Tamper-protection DACL** | Administrators can start/stop but **cannot modify or delete** the service. Only SYSTEM has full control. |
+| **Control Flow Guard** | Enabled at compile time for all configurations. |
+| **Secure temp directories** | Validated against symlink attacks and restricted with per-directory DACLs. |
+| **Automatic failure recovery** | Restarts on crash (2 retries with backoff, 24-hour failure counter reset). |
+| **Architecture enforcement** | 32-bit builds refuse to execute on 64-bit Windows to prevent WoW64 registry redirection issues. |
+
+---
+
+## Project Structure
+
+```
+├── Panoptes.sln                         # Visual Studio solution
+├── Panoptes-Spectra-Windows.vcxproj     # C++ project (v145, C++20, Win10 SDK)
+├── README.md
+├── .gitignore
+│
+├── src/
+│   ├── Main.cpp                 # Entry point: CLI parsing, console/service dispatch
+│   ├── WindowsEnum.h            # Aggregate include for all data-collection modules
+│   │
+│   ├── MachineInfo.cpp/.h       # NetBIOS name, DNS/FQDN, IP addresses
+│   ├── OsVersionInfo.cpp/.h     # OS display name, ntoskrnl version, CPU arch
+│   ├── UserProfiles.cpp/.h      # User profile enumeration (SID, path, hive state)
+│   ├── RegistryUtils.cpp/.h     # Safe registry string reads
+│   ├── RegistryHiveLoader.cpp/.h # RAII offline registry hive loading
+│   ├── PrivMgmt.cpp/.h          # Privilege enable/disable helpers
+│   ├── Win32Apps.cpp/.h         # Registry-based installed applications
+│   ├── MsiApps.cpp/.h           # Windows Installer (MSI) product enumeration
+│   ├── AppXPackages.cpp/.h      # AppX/MSIX package enumeration
+│   ├── WinAppXPackages.cpp/.h   # Modern app enumeration via WinRT Package Manager
+│   ├── InstalledUpdates.cpp/.h  # Windows Update Agent (WUA) KB enumeration
+│   ├── WindowsServices.cpp/.h   # SCM service enumeration
+│   ├── ProcessTracker.cpp/.h    # ETW + Sysmon real-time process tracking
+│   ├── VSSSnapshot.cpp/.h       # Volume Shadow Copy RAII wrapper
+│   │
+│   ├── Utils/
+│   │   └── Utils.cpp/.h         # JSON generation, logging, UTF-8 helpers, security validation
+│   │
+│   └── Service/
+│       ├── ServiceMain.cpp/.h           # SCM entry point, worker thread, periodic collection
+│       ├── ServiceInstaller.cpp/.h      # Install/upgrade/uninstall with full hardening
+│       ├── ServiceConfig.cpp/.h         # Registry-based runtime configuration
+│       ├── ServiceTamperProtection.cpp/.h # Restrictive service DACL management
+│       └── MachineId.cpp/.h             # Persistent SPECTRA-{GUID} machine identifier
+│
+├── docs/
+│   ├── DEPLOYMENT_CHECKLIST.md
+│   ├── QUICKSTART.md
+│   ├── QUICK_REFERENCE.md
+│   ├── REBUILD_INSTRUCTIONS.md
+│   ├── WINDOWS_SERVICE_GUIDE.md
+│   ├── WINDOWS_VERSION_COMPATIBILITY.md
+│   └── ... (additional implementation docs)
+│
+├── bin/                          # Build output (git-ignored)
+└── .github/
+    └── workflows/
+        └── request-pan-ticket.yml  # Issue-tracking ticket automation
+```
+
+---
+
+## Documentation
+
+Detailed guides are available in the [`docs/`](docs/) directory:
+
+| Document | Description |
+|---|---|
+| [WINDOWS_SERVICE_GUIDE.md](docs/WINDOWS_SERVICE_GUIDE.md) | Full service implementation guide, access-control matrix, and troubleshooting |
+| [DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | Step-by-step deployment and verification checklist |
+| [QUICKSTART.md](docs/QUICKSTART.md) | 5-minute quick-start guide |
+| [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Command cheat sheet |
+| [REBUILD_INSTRUCTIONS.md](docs/REBUILD_INSTRUCTIONS.md) | How to rebuild while the service is running |
+| [WINDOWS_VERSION_COMPATIBILITY.md](docs/WINDOWS_VERSION_COMPATIBILITY.md) | OS compatibility matrix for modern app enumeration |
+| [MACHINE_ID_IMPLEMENTATION.md](docs/MACHINE_ID_IMPLEMENTATION.md) | Machine ID design and implementation details |
+| [VSS_IMPLEMENTATION_SUMMARY.md](docs/VSS_IMPLEMENTATION_SUMMARY.md) | Volume Shadow Copy integration summary |
+| [SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md](docs/SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md) | Secure temporary directory design |
+
+---
+
+## License
+
+Proprietary — © Panoptes Security. All rights reserved.
