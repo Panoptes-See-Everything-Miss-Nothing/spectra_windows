@@ -1,4 +1,4 @@
-# Panoptes Spectra — Windows Sensor
+# Panoptes
 
 > **Panoptes** — *See Everything. Miss Nothing.*
 
