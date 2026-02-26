@@ -22,9 +22,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{71429df7-255b-4f37-bdfb-ddd7faaf382f}</ProjectGuid>
-    <RootNamespace>WindowsEnum</RootNamespace>
+    <RootNamespace>PanoptesSpectraWindows</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>WindowsEnum</ProjectName>
+    <ProjectName>Panoptes-Spectra-Windows</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
