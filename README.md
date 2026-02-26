@@ -1,16 +1,60 @@
-# Panoptes Spectra — Windows System Inventory Agent
+# Panoptes Spectra — Windows Sensor
+
+> **Panoptes** — *See Everything. Miss Nothing.*
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg)](https://www.microsoft.com/windows)
 [![Architecture](https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg)](#build)
 [![License](https://img.shields.io/badge/license-Proprietary-lightgrey.svg)](#license)
 
-**Panoptes Spectra** is an enterprise-grade, native Windows service that collects comprehensive system inventory data for vulnerability management. It runs as `LocalSystem`, uses only native Win32/COM/WinRT APIs (no third-party dependencies), and outputs machine-readable JSON for downstream consumption.
+**Panoptes** is a community-driven vulnerability management platform built to cover the blind spots that commercial offerings often leave behind. If you've ever wondered why your scanner keeps missing known vulnerabilities — false negatives hiding in plain sight — this project exists because of that.
+
+**Spectra** is the sensor layer of Panoptes. This repository contains **Spectra Sensor for Windows** — an enterprise-grade, native Windows service that collects comprehensive system inventory data. It runs as `LocalSystem`, uses only native Win32/COM/WinRT APIs (no third-party dependencies), and outputs machine-readable JSON for downstream analysis by **Iris**, the Panoptes backend.
+
+### The Panoptes Platform
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Panoptes Platform                    │
+│           See Everything. Miss Nothing.                 │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │   Spectra    │  │   Spectra    │  │   Spectra    │  │
+│  │   Windows    │  │    Linux     │  │    macOS     │  │
+│  │  (this repo) │  │  (planned)   │  │  (planned)   │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
+│         │                 │                 │          │
+│         └────────┬────────┴────────┬────────┘          │
+│                  │                 │                    │
+│           ┌──────▼──────┐  ┌──────▼──────┐             │
+│           │  Ingestion  │  │  Database   │             │
+│           │  Pipeline   │──▶│  (findings) │             │
+│           └─────────────┘  └──────┬──────┘             │
+│                                   │                    │
+│                            ┌──────▼──────┐             │
+│                            │    Iris     │             │
+│                            │  (backend)  │             │
+│                            │  NVD match  │             │
+│                            └──────┬──────┘             │
+│                                   │                    │
+│                            ┌──────▼──────┐             │
+│                            │  Dashboard  │             │
+│                            │  (frontend) │             │
+│                            └─────────────┘             │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**How it works:** Spectra sensors collect detailed system inventory (installed software, versions, patches, services, etc.) from endpoints. Iris, the backend, correlates those findings against the NVD and other vulnerability data sources to identify what's actually vulnerable — no need to maintain per-CVE detection signatures for the vast majority of cases. This design keeps operational overhead low while maximising detection accuracy.
+
+> **Status:** Spectra Sensor for Windows is in active development. Iris (backend) is a work in progress. Linux and macOS sensors are planned.
 
 ---
 
 ## Table of Contents
 
+- [Why Panoptes?](#why-panoptes)
 - [Features](#features)
 - [Architecture](#architecture)
 - [System Requirements](#system-requirements)
@@ -22,7 +66,23 @@
 - [Security](#security)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
+- [Contributing](#contributing)
 - [License](#license)
+
+---
+
+## Why Panoptes?
+
+Commercial vulnerability scanners are expensive, opaque, and — if you look closely — riddled with false negatives. They miss things. Sometimes because of architectural shortcuts, sometimes because maintaining detection rules for every CVE across every product is an enormous burden.
+
+Panoptes takes a different approach:
+
+- **Accurate inventory first.** Spectra sensors collect ground-truth data about what's actually installed — versions, patches, registry artefacts, package metadata — using native OS APIs, not heuristics.
+- **Automated correlation.** Iris matches inventory data against the NVD's CPE and version-range data. No hand-written signatures needed for the common case.
+- **Community-powered coverage.** Some applications need custom detection logic (specific registry keys, non-standard version storage, etc.). That's where community contributions matter — testing, security review, and gathering artefacts for the edge cases no single team can cover alone.
+- **Low overhead.** The system is designed so that adding coverage for a new product doesn't require writing and maintaining a detection rule from scratch every time.
+
+The goal is simple: give the security community a tool that's honest about what's on the machine and what's vulnerable — and make it sustainable to maintain.
 
 ---
 
@@ -45,6 +105,8 @@
 ---
 
 ## Architecture
+
+### Spectra Sensor for Windows
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -330,6 +392,20 @@ Detailed guides are available in the [`docs/`](docs/) directory:
 | [PACKAGE_MANAGER_API_MIGRATION.md](docs/PACKAGE_MANAGER_API_MIGRATION.md) | Migration from registry-based to WinRT Package Manager API |
 | [WINDOWS7_DELAY_LOAD_REQUIRED.md](docs/WINDOWS7_DELAY_LOAD_REQUIRED.md) | Delay-load configuration for Windows 7 compatibility |
 | [WINRT_SETUP_INSTRUCTIONS.md](docs/WINRT_SETUP_INSTRUCTIONS.md) | C++/WinRT setup and build instructions |
+
+---
+
+## Contributing
+
+Panoptes is a community-driven project. Contributions are welcome in many forms:
+
+- **Code** — New collection modules, bug fixes, performance improvements.
+- **Testing** — Run Spectra on diverse environments and report what it finds (or misses).
+- **Security review** — Audit the codebase, suggest hardening improvements.
+- **Application artefacts** — Help document where specific applications store their version and patch information (registry keys, file paths, installer metadata). This is the kind of work that scales only with community support — no single team can procure and reverse-engineer every application out there.
+- **Documentation** — Improve guides, add examples, translate.
+
+If you find this project useful and want to help close the gaps that commercial scanners leave open, we'd be glad to have you.
 
 ---
 
