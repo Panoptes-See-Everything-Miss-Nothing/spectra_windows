@@ -1,6 +1,6 @@
 <div align="center">
 <table><tbody><tr>
-<td><img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="160"></td>
+<td><img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="160" align="left"></td>
 <td>
 <h1>Panoptes</h1>
 <p><em>See Everything. Miss Nothing.</em></p>
