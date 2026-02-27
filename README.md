@@ -343,74 +343,14 @@ The service produces two JSON files per collection cycle in the configured outpu
 | `processes.json` | Non-service processes observed via real-time ETW monitoring + point-in-time snapshot, with image path, command line, user, parent process, PE file version, and full tracker diagnostics. |
 | `mspt_inventory.json` | *(work in progress)* Inventory of Microsoft-supplied software and patches collected via the Microsoft Product and Service Tag (MPST) API. |
 
-### Sample `inventory.json` structure
+### Sample Output
 
-```json
-{
-  "spectraMachineId": "SPECTRA-A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
-  "collectionTimestamp": "2025-01-15T14:30:45",
-  "agentVersion": "1.0.0",
-  "machineNetBiosName": "WORKSTATION01",
-  "machineDnsName": "workstation01.corp.local",
-  "ipAddresses": ["10.0.1.42", "fe80::1"],
-  "installedAppsByUser": [
-    {
-      "user": "SYSTEM",
-      "userSID": "S-1-5-18",
-      "applications": [ { "displayName": "...", "displayVersion": "...", "publisher": "..." } ],
-      "msiProducts": [ { "productCode": "...", "productName": "...", "productVersion": "..." } ],
-      "modernAppPackages": [ { "packageFullName": "...", "version": "...", "isFramework": false } ]
-    }
-  ],
-  "installedUpdates": {
-    "osVersion": {
-      "os": "Microsoft Windows 11 Pro 64-bit",
-      "ntoskrnl.exeVersion": "10.0.26100.4351",
-      "processorArchitecture": "x64"
-    },
-    "updates": [
-      {
-        "title": "2025-01 Cumulative Update for Windows 11...",
-        "kbArticleIds": ["5050009"],
-        "msrcSeverity": "Critical",
-        "installedDate": "2025-01-15T03:00:00"
-      }
-    ]
-  },
-  "windowsServices": [ { "serviceName": "wuauserv", "displayName": "Windows Update", "startType": "Manual", "currentState": "Stopped" } ],
-  "processTrackingSummary": { "activeSource": "EtwKernelProcess", "isActive": true, "totalEventsReceived": 1247 }
-}
-```
+Real Spectra output from two endpoints is included in [`spectra_inventory_samples/`](spectra_inventory_samples/):
 
-### Sample `processes.json` structure
-
-```json
-{
-  "spectraMachineId": "SPECTRA-A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
-  "collectionTimestamp": "2025-01-15T14:30:45",
-  "agentVersion": "1.0.0",
-  "runningProcesses": [
-    {
-      "imagePath": "C:\\Users\\admin\\Downloads\\tool.exe",
-      "commandLine": "tool.exe --scan",
-      "userSid": "S-1-5-21-...",
-      "username": "admin",
-      "processId": 5678,
-      "parentProcessId": 1234,
-      "parentImagePath": "C:\\Windows\\explorer.exe",
-      "firstSeenTimestamp": "2025-01-15T14:25:12",
-      "fileVersion": "2.1.0.0"
-    }
-  ],
-  "processTrackerDiagnostics": {
-    "activeSource": "EtwKernelProcess",
-    "totalEventsReceived": 1247,
-    "eventsDeduplicatedOut": 83,
-    "serviceProcessesExcluded": 412,
-    "managedPathProcessesExcluded": 298
-  }
-}
-```
+| Endpoint | `inventory.json` | `processes.json` | `mspt_inventory.json` |
+|---|---|---|---|
+| **pc1** (physical workstation) | [view](spectra_inventory_samples/pc1/inventory.json) | [view](spectra_inventory_samples/pc1/processes.json) | [view](spectra_inventory_samples/pc1/mspt_inventory.json) |
+| **vm1** (virtual machine) | [view](spectra_inventory_samples/vm1/inventory.json) | [view](spectra_inventory_samples/vm1/processes.json) | [view](spectra_inventory_samples/vm1/mspt_inventory.json) |
 
 ---
 
