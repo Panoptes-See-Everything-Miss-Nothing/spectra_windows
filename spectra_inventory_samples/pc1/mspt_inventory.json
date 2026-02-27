@@ -1,0 +1,363 @@
+{
+  "spectraMachineId": "SPECTRA-CD4E2CA5-8891-41B0-9EAA-93025ACEF5A6",
+  "collectionTimestamp": "2026-02-25T19:51:22",
+  "agentVersion": "1.0.0",
+  "dataType": "msptInventory",
+  "systemState": {
+    "osBuild": "10.0.22621.4317",
+    "osEdition": "Microsoft Windows 11 Pro 64-bit",
+    "processorArchitecture": "x64",
+    "rebootRequired": false,
+    "cbsRebootPending": false,
+    "windowsUpdateRebootRequired": false,
+    "updateServiceSource": "Windows Update",
+    "lastUpdateCheckTime": "2026-02-25T06:52:04"
+  },
+  "osFileVersions": [
+    {
+      "relativePath": "ntoskrnl.exe",
+      "fullPath": "C:\\Windows\\system32\\ntoskrnl.exe",
+      "fileVersion": "10.0.22621.4317",
+      "category": "kernel",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "ntdll.dll",
+      "fullPath": "C:\\Windows\\system32\\ntdll.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "kernel",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\tcpip.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\tcpip.sys",
+      "fileVersion": "10.0.22621.4249",
+      "category": "network",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\http.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\http.sys",
+      "fileVersion": "10.0.22621.4249",
+      "category": "network",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\afd.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\afd.sys",
+      "fileVersion": "10.0.22621.4317",
+      "category": "network",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\cng.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\cng.sys",
+      "fileVersion": "10.0.22621.4317",
+      "category": "crypto",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "bcryptprimitives.dll",
+      "fullPath": "C:\\Windows\\system32\\bcryptprimitives.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "crypto",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "schannel.dll",
+      "fullPath": "C:\\Windows\\system32\\schannel.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "crypto",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "lsasrv.dll",
+      "fullPath": "C:\\Windows\\system32\\lsasrv.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "auth",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "msv1_0.dll",
+      "fullPath": "C:\\Windows\\system32\\msv1_0.dll",
+      "fileVersion": "10.0.22621.3374",
+      "category": "auth",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "kerberos.dll",
+      "fullPath": "C:\\Windows\\system32\\kerberos.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "auth",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "netlogon.dll",
+      "fullPath": "C:\\Windows\\system32\\netlogon.dll",
+      "fileVersion": "10.0.22621.3733",
+      "category": "auth",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "win32kfull.sys",
+      "fullPath": "C:\\Windows\\system32\\win32kfull.sys",
+      "fileVersion": "10.0.22621.4317",
+      "category": "win32k",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "win32kbase.sys",
+      "fullPath": "C:\\Windows\\system32\\win32kbase.sys",
+      "fileVersion": "10.0.22621.4317",
+      "category": "win32k",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "win32k.sys",
+      "fullPath": "C:\\Windows\\system32\\win32k.sys",
+      "fileVersion": "10.0.22621.4317",
+      "category": "win32k",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\termdd.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\termdd.sys",
+      "fileVersion": "",
+      "category": "rdp",
+      "fileExists": false,
+      "versionReadSuccess": false
+    },
+    {
+      "relativePath": "rdpcorets.dll",
+      "fullPath": "C:\\Windows\\system32\\rdpcorets.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "rdp",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "rdpbase.dll",
+      "fullPath": "C:\\Windows\\system32\\rdpbase.dll",
+      "fileVersion": "10.0.22621.3527",
+      "category": "rdp",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "mshtml.dll",
+      "fullPath": "C:\\Windows\\system32\\mshtml.dll",
+      "fileVersion": "11.0.22621.4317",
+      "category": "browser",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "urlmon.dll",
+      "fullPath": "C:\\Windows\\system32\\urlmon.dll",
+      "fileVersion": "11.0.22621.4169",
+      "category": "browser",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "jscript9.dll",
+      "fullPath": "C:\\Windows\\system32\\jscript9.dll",
+      "fileVersion": "11.0.22621.4317",
+      "category": "browser",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "spoolsv.exe",
+      "fullPath": "C:\\Windows\\system32\\spoolsv.exe",
+      "fileVersion": "10.0.22621.3672",
+      "category": "print",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "localspl.dll",
+      "fullPath": "C:\\Windows\\system32\\localspl.dll",
+      "fileVersion": "10.0.22621.4317",
+      "category": "print",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "win32spl.dll",
+      "fullPath": "C:\\Windows\\system32\\win32spl.dll",
+      "fileVersion": "10.0.22621.3810",
+      "category": "print",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\srv2.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\srv2.sys",
+      "fileVersion": "10.0.22621.4249",
+      "category": "smb",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "drivers\\mrxsmb.sys",
+      "fullPath": "C:\\Windows\\system32\\drivers\\mrxsmb.sys",
+      "fileVersion": "10.0.22621.4249",
+      "category": "smb",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "ole32.dll",
+      "fullPath": "C:\\Windows\\system32\\ole32.dll",
+      "fileVersion": "10.0.22621.3958",
+      "category": "com",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "oleaut32.dll",
+      "fullPath": "C:\\Windows\\system32\\oleaut32.dll",
+      "fileVersion": "10.0.22621.3672",
+      "category": "com",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "combase.dll",
+      "fullPath": "C:\\Windows\\system32\\combase.dll",
+      "fileVersion": "10.0.22621.4249",
+      "category": "com",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "rpcrt4.dll",
+      "fullPath": "C:\\Windows\\system32\\rpcrt4.dll",
+      "fileVersion": "10.0.22621.4249",
+      "category": "com",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "dwm.exe",
+      "fullPath": "C:\\Windows\\system32\\dwm.exe",
+      "fileVersion": "10.0.22621.3672",
+      "category": "graphics",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "dwmcore.dll",
+      "fullPath": "C:\\Windows\\system32\\dwmcore.dll",
+      "fileVersion": "10.0.22621.4249",
+      "category": "graphics",
+      "fileExists": true,
+      "versionReadSuccess": true
+    },
+    {
+      "relativePath": "clr.dll",
+      "fullPath": "C:\\Windows\\system32\\clr.dll",
+      "fileVersion": "",
+      "category": "dotnet",
+      "fileExists": false,
+      "versionReadSuccess": false
+    },
+    {
+      "relativePath": "clrjit.dll",
+      "fullPath": "C:\\Windows\\system32\\clrjit.dll",
+      "fileVersion": "",
+      "category": "dotnet",
+      "fileExists": false,
+      "versionReadSuccess": false
+    }
+  ],
+  "officePatchState": {
+    "clickToRunDetected": true,
+    "versionToReport": "16.0.19628.20214",
+    "updateChannel": "http://officecdn.microsoft.com/pr/492350f6-3a01-4f97-b9c0-c7c6ddf67d60",
+    "platform": "x64",
+    "installPath": "C:\\Program Files\\Microsoft Office\\Office16",
+    "binaryVersions": [
+      {
+        "relativePath": "WINWORD.EXE",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\WINWORD.EXE",
+        "fileVersion": "",
+        "category": "office_word",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "EXCEL.EXE",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\EXCEL.EXE",
+        "fileVersion": "",
+        "category": "office_excel",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "POWERPNT.EXE",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\POWERPNT.EXE",
+        "fileVersion": "",
+        "category": "office_powerpoint",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "OUTLOOK.EXE",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\OUTLOOK.EXE",
+        "fileVersion": "",
+        "category": "office_outlook",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "MSACCESS.EXE",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\MSACCESS.EXE",
+        "fileVersion": "",
+        "category": "office_access",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "mso.dll",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\mso.dll",
+        "fileVersion": "",
+        "category": "office_core",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "graph.exe",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\graph.exe",
+        "fileVersion": "",
+        "category": "office_core",
+        "fileExists": false,
+        "versionReadSuccess": false
+      },
+      {
+        "relativePath": "oart.dll",
+        "fullPath": "C:\\Program Files\\Microsoft Office\\Office16\\oart.dll",
+        "fileVersion": "",
+        "category": "office_core",
+        "fileExists": false,
+        "versionReadSuccess": false
+      }
+    ]
+  }
+}

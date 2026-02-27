@@ -1,0 +1,107 @@
+{
+  "spectraMachineId": "SPECTRA-CD4E2CA5-8891-41B0-9EAA-93025ACEF5A6",
+  "collectionTimestamp": "2026-02-27T22:41:02",
+  "agentVersion": "1.0.0",
+  "runningProcesses": [
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Program Files (x86)\\Google\\GoogleUpdater\\144.0.7547.6\\updater.exe",
+      "commandLine": "",
+      "userSid": "",
+      "username": "Unknown",
+      "processId": 5196,
+      "parentProcessId": 5196,
+      "parentImagePath": "",
+      "firstSeenTimestamp": "2026-02-27T22:40:15",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Program Files (x86)\\Google\\GoogleUpdater\\144.0.7547.6\\updater.exe",
+      "commandLine": "",
+      "userSid": "S-1-5-18",
+      "username": "NT AUTHORITY\\SYSTEM",
+      "processId": 6320,
+      "parentProcessId": 6320,
+      "parentImagePath": "C:\\Program Files (x86)\\Google\\GoogleUpdater\\144.0.7547.6\\updater.exe",
+      "firstSeenTimestamp": "2026-02-27T22:40:15",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Windows\\System32\\wevtutil.exe",
+      "commandLine": "",
+      "userSid": "S-1-5-18",
+      "username": "NT AUTHORITY\\SYSTEM",
+      "processId": 5272,
+      "parentProcessId": 5272,
+      "parentImagePath": "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26010.5-0\\MsMpEng.exe",
+      "firstSeenTimestamp": "2026-02-27T22:40:15",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Windows\\System32\\conhost.exe",
+      "commandLine": "",
+      "userSid": "",
+      "username": "Unknown",
+      "processId": 6840,
+      "parentProcessId": 6840,
+      "parentImagePath": "",
+      "firstSeenTimestamp": "2026-02-27T22:40:15",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Windows\\System32\\conhost.exe",
+      "commandLine": "",
+      "userSid": "S-1-5-18",
+      "username": "NT AUTHORITY\\SYSTEM",
+      "processId": 8244,
+      "parentProcessId": 8244,
+      "parentImagePath": "C:\\Windows\\UUS\\amd64\\WaaSMedicAgent.exe",
+      "firstSeenTimestamp": "2026-02-27T22:40:24",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26010.5-0\\MpCmdRun.exe",
+      "commandLine": "",
+      "userSid": "S-1-5-18",
+      "username": "NT AUTHORITY\\SYSTEM",
+      "processId": 5272,
+      "parentProcessId": 5272,
+      "parentImagePath": "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26010.5-0\\MsMpEng.exe",
+      "firstSeenTimestamp": "2026-02-27T22:40:26",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Windows\\UUS\\Packages\\Preview\\amd64\\MoUsoCoreWorker.exe",
+      "commandLine": "",
+      "userSid": "S-1-5-18",
+      "username": "NT AUTHORITY\\SYSTEM",
+      "processId": 8468,
+      "parentProcessId": 8468,
+      "parentImagePath": "C:\\Windows\\System32\\svchost.exe",
+      "firstSeenTimestamp": "2026-02-27T22:40:27",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "\\Device\\HarddiskVolume5\\Windows\\System32\\SIHClient.exe",
+      "commandLine": "",
+      "userSid": "",
+      "username": "Unknown",
+      "processId": 2036,
+      "parentProcessId": 2036,
+      "parentImagePath": "",
+      "firstSeenTimestamp": "2026-02-27T22:40:44",
+      "fileVersion": ""
+    }
+  ],
+  "processTrackerDiagnostics": {
+    "activeSource": "EtwKernelProcess",
+    "etwSessionStartResult": 0,
+    "etwConsumerOpenResult": 0,
+    "sysmonAvailable": false,
+    "totalEventsReceived": 8,
+    "eventsDeduplicatedOut": 26,
+    "serviceProcessesExcluded": 42,
+    "managedPathProcessesExcluded": 0,
+    "lastErrorMessage": "",
+    "processesCollected": 8
+  }
+}

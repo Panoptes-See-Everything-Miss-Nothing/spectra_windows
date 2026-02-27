@@ -162,6 +162,7 @@ This repository currently contains:
 - JSON output for ingestion into SIEM, data lakes, or analytics pipelines  
 - Supports querying and CVE correlation (once Iris backend is ready)
 - The application is a single native C++ executable (`Panoptes-Spectra.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
+- Uses Volume Shadow Copy (VSS) to read registry hives offline for all users on the system even if they are not currently logged in.
 
 #### Using Spectra Today
 
@@ -249,7 +250,7 @@ msbuild Panoptes.sln /p:Configuration=Release /p:Platform=x64
 
 ## Usage
 
-```
+```powershell
 Panoptes.exe [option]
 
 Options:
@@ -340,7 +341,7 @@ The service produces two JSON files per collection cycle in the configured outpu
 |---|---|
 | `inventory.json` | Machine identity, network info, per-user application inventory (Win32/MSI/AppX grouped by user with SID), OS version (via `ntoskrnl.exe`), installed updates with MSRC metadata, Windows services, and process tracking summary. |
 | `processes.json` | Non-service processes observed via real-time ETW monitoring + point-in-time snapshot, with image path, command line, user, parent process, PE file version, and full tracker diagnostics. |
-| `mspt_inventory.json` | *(Future)* Inventory of Microsoft-supplied software and patches collected via the Microsoft Product and Service Tag (MPST) API. |
+| `mspt_inventory.json` | *(work in progress)* Inventory of Microsoft-supplied software and patches collected via the Microsoft Product and Service Tag (MPST) API. |
 
 ### Sample `inventory.json` structure
 
@@ -435,6 +436,7 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 ```
 ├── Panoptes.sln                         # Visual Studio solution
 ├── Panoptes-Spectra-Windows.vcxproj     # C++ project (v145, C++20, Win10 SDK)
+├── Panoptes-Spectra-Windows.vcxproj.filters  # Solution Explorer filter layout
 ├── README.md
 ├── .gitignore
 │
@@ -495,6 +497,16 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │   ├── WINDOWS_SERVICE_GUIDE.md
 │   ├── WINDOWS_VERSION_COMPATIBILITY.md
 │   └── WINRT_SETUP_INSTRUCTIONS.md
+│
+├── spectra_inventory_samples/       # Sample Spectra output from real endpoints
+│   ├── pc1/
+│   │   ├── inventory.json
+│   │   ├── mspt_inventory.json
+│   │   └── processes.json
+│   └── vm1/
+│       ├── inventory.json
+│       ├── mspt_inventory.json
+│       └── processes.json
 │
 ├── bin/                          # Build output (git-ignored)
 └── .github/

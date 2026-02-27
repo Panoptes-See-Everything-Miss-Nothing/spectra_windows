@@ -1,0 +1,4 @@
+// Panoptes.rc — Application resources
+
+// Application icon (lowest ordinal = default icon for the EXE)
+1 ICON "..\\..\\assets\\icons\\spectra.ico"

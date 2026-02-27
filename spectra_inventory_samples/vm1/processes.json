@@ -1,0 +1,217 @@
+{
+  "spectraMachineId": "SPECTRA-28A94B1A-CB07-46A5-A1B5-F2398B549593",
+  "collectionTimestamp": "2026-02-27T23:09:24",
+  "agentVersion": "1.0.0",
+  "runningProcesses": [
+    {
+      "imagePath": "C:\\Users\\admin\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+      "commandLine": "C:\\Users\\admin\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 5316,
+      "parentProcessId": 1056,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "26.17.126.2"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 4420,
+      "parentProcessId": 1056,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 6180,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 8508,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 8052,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 5748,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 6344,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 6140,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 8676,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 5596,
+      "parentProcessId": 4420,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\chrome-win64\\chrome-win64\\chrome.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "145.0.7632.76"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\ProcessMonitor\\Procmon.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\ProcessMonitor\\Procmon.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 9164,
+      "parentProcessId": 1056,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "4.1.0.0"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\AppData\\Local\\Temp\\Procmon64.exe",
+      "commandLine": "C:\\Users\\admin\\AppData\\Local\\Temp\\Procmon64.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 9156,
+      "parentProcessId": 9164,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\ProcessMonitor\\Procmon.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "4.1.0.0"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\sublime_text.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\sublime_text.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 9836,
+      "parentProcessId": 1056,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "4.2.0.0"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\crash_handler.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\crash_handler.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 5980,
+      "parentProcessId": 9836,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\sublime_text.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\plugin_host-3.3.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\plugin_host-3.3.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 5112,
+      "parentProcessId": 9836,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\sublime_text.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\plugin_host-3.8.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\plugin_host-3.8.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 10948,
+      "parentProcessId": 9836,
+      "parentImagePath": "C:\\Users\\admin\\Downloads\\sublime_text_build_4200_x64\\sublime_text.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": ""
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\Downloads\\npp.8.9.1.portable.x64\\notepad++.exe",
+      "commandLine": "C:\\Users\\admin\\Downloads\\npp.8.9.1.portable.x64\\notepad++.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 10164,
+      "parentProcessId": 1056,
+      "parentImagePath": "C:\\Windows\\explorer.exe",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "8.9.1.0"
+    },
+    {
+      "imagePath": "C:\\Users\\admin\\AppData\\Local\\Microsoft\\OneDrive\\26.017.0126.0002_1\\OneDrive.Sync.Service.exe",
+      "commandLine": "C:\\Users\\admin\\AppData\\Local\\Microsoft\\OneDrive\\26.017.0126.0002_1\\OneDrive.Sync.Service.exe",
+      "userSid": "S-1-5-21-1933839589-2181974404-2806357374-1001",
+      "username": "Spectra-1\\admin",
+      "processId": 9408,
+      "parentProcessId": 1444,
+      "parentImagePath": "",
+      "firstSeenTimestamp": "2026-02-27T23:09:24",
+      "fileVersion": "26.17.126.2"
+    }
+  ],
+  "processTrackerDiagnostics": {
+    "activeSource": "EtwKernelProcess",
+    "etwSessionStartResult": 0,
+    "etwConsumerOpenResult": 0,
+    "sysmonAvailable": false,
+    "totalEventsReceived": 0,
+    "eventsDeduplicatedOut": 0,
+    "serviceProcessesExcluded": 2,
+    "managedPathProcessesExcluded": 0,
+    "lastErrorMessage": "",
+    "processesCollected": 18
+  }
+}
