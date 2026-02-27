@@ -1,11 +1,16 @@
-# Panoptes
+<p align="center">
+  <img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="200">
+</p>
 
-> **Panoptes** — *See Everything. Miss Nothing.*
+<h1 align="center">Panoptes</h1>
+<p align="center"><em>See Everything. Miss Nothing.</em></p>
 
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg)](https://www.microsoft.com/windows)
-[![Architecture](https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg)](#build)
-[![License](https://img.shields.io/badge/license-Proprietary-lightgrey.svg)](#license)
+<p align="center">
+  <a href="https://en.cppreference.com/w/cpp/20"><img src="https://img.shields.io/badge/C%2B%2B-20-blue.svg" alt="C++20"></a>
+  <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg" alt="Platform"></a>
+  <a href="#build"><img src="https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg" alt="Architecture"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-Proprietary-lightgrey.svg" alt="License"></a>
+</p>
 
 **Panoptes** is a community-driven vulnerability management platform built to cover the blind spots that commercial offerings often leave behind. If you've ever wondered why your scanner keeps missing known vulnerabilities — false negatives hiding in plain sight — this project exists because of that.
 
@@ -379,9 +384,22 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 ├── README.md
 ├── .gitignore
 │
+├── assets/
+│   ├── branding/
+│   │   └── panoptes-logo.png            # Platform logo (README, docs, GitHub social preview)
+│   ├── icons/
+│   │   ├── spectra.ico                  # Multi-res icon embedded in Panoptes.exe
+│   │   ├── spectra-alt.ico              # Alternate Spectra icon variant
+│   │   └── iris.ico                     # Iris backend icon (parked until Iris repo exists)
+│   └── icons-macos/
+│       └── spectra.icns                 # macOS icon (parked until macOS sensor repo exists)
+│
 ├── src/
 │   ├── Main.cpp                 # Entry point: CLI parsing, console/service dispatch
 │   ├── WindowsEnum.h            # Aggregate include for all data-collection modules
+│   │
+│   ├── Resources/
+│   │   └── Panoptes.rc          # Win32 resource script (application icon)
 │   │
 │   ├── MachineInfo.cpp/.h       # NetBIOS name, DNS/FQDN, IP addresses
 │   ├── OsVersionInfo.cpp/.h     # OS display name, ntoskrnl version, CPU arch
