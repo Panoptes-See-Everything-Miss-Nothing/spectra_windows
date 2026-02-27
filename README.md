@@ -509,9 +509,7 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │       └── processes.json
 │
 ├── bin/                          # Build output (git-ignored)
-└── .github/
-    └── workflows/
-        └── request-pan-ticket.yml  # Issue-tracking ticket automation
+
 ```
 
 ---
