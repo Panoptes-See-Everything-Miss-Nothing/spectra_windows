@@ -9,14 +9,80 @@
   <a href="https://en.cppreference.com/w/cpp/20"><img src="https://img.shields.io/badge/C%2B%2B-20-blue.svg" alt="C++20"></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg" alt="Platform"></a>
   <a href="#build"><img src="https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg" alt="Architecture"></a>
-  <a href="#license"><img src="https://img.shields.io/badge/license-Proprietary-lightgrey.svg" alt="License"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-lightgrey.svg" alt="License"></a>
 </p>
 
-**Panoptes** is a community-driven vulnerability management platform built to cover the blind spots that commercial offerings often leave behind. If you've ever wondered why your scanner keeps missing known vulnerabilities — false negatives hiding in plain sight — this project exists because of that.
+---
 
-**Spectra** is the sensor layer of Panoptes. This repository contains **Spectra Sensor for Windows** — an enterprise-grade, native Windows service that collects comprehensive system inventory data. It runs as `LocalSystem`, uses only native Win32/COM/WinRT APIs (no third-party dependencies), and outputs machine-readable JSON for downstream analysis by **Iris**, the Panoptes backend.
+# Introduction
 
-### The Panoptes Platform
+**Panoptes** is a community-driven vulnerability management platform built to eliminate blind spots that traditional scanners leave behind.
+
+If you've ever asked:
+
+> *"How did this vulnerability exist on the machine when the scanner said it was clean?"*
+
+Panoptes exists because of that question.
+
+---
+
+## Project Status
+
+- **Spectra Windows sensor:** Production-capable and actively maintained  
+- **Iris backend:** Under active development  
+- **Linux/macOS sensors:** Planned  
+
+---
+
+# Table of Contents
+
+- [Why Panoptes?](#why-panoptes)
+- [Architecture Overview](#architecture-overview)
+- [Features](#features)
+- [System Requirements](#system-requirements)
+- [Build](#build)
+- [Usage](#usage)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Output](#output)
+- [Security](#security)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [Core Contributors](#core-contributors)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+# Why Panoptes?
+
+Most vulnerability scanners depend heavily on:
+
+- Command execution  
+- Pattern-based detection  
+- Patch presence assumptions  
+- Signature-per-CVE models  
+
+These approaches introduce:
+
+- False negatives  
+- Detection gaps  
+- Rule maintenance overhead  
+- Security review burden  
+
+Panoptes takes a fundamentally different approach:
+
+> **Inventory first. Correlate intelligently. Minimise blind spots.**
+
+---
+
+# Architecture Overview
+
+Panoptes is modular:
+
+- **Spectra** → Sensor layer (endpoint inventory collection)  
+- **Iris** → Backend correlation and intelligence engine  
+- *(Future)* Web UI / API / Database components  
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -49,81 +115,9 @@
 │                            └─────────────┘             │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
-```
 
-**How it works:** Spectra sensors collect detailed system inventory (installed software, versions, patches, services, etc.) from endpoints. Iris, the backend, correlates those findings against the NVD and other vulnerability data sources to identify what's actually vulnerable — no need to maintain per-CVE detection signatures for the vast majority of cases. This design keeps operational overhead low while maximising detection accuracy.
+**Spectra Sensor for Windows**
 
-> **Status:** Spectra Sensor for Windows is in active development. Iris (backend) is a work in progress. Linux and macOS sensors are planned.
-
----
-
-## Table of Contents
-
-- [Why Panoptes?](#why-panoptes)
-- [Features](#features)
-- [Architecture](#architecture)
-- [System Requirements](#system-requirements)
-- [Build](#build)
-- [Usage](#usage)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Output](#output)
-- [Security](#security)
-- [Project Structure](#project-structure)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
-## Why Panoptes?
-
-Commercial vulnerability scanners are expensive, opaque, and — if you look closely — riddled with false negatives. They miss things. Sometimes because of architectural shortcuts, sometimes because maintaining detection rules for every CVE across every product is an enormous burden.
-
-Panoptes takes a different approach:
-
-- **Accurate inventory first.** Spectra sensors collect ground-truth data about what's actually installed — versions, patches, registry artefacts, package metadata — using native OS APIs, not heuristics.
-- **Automated correlation.** Iris matches inventory data against the NVD's CPE and version-range data. No hand-written signatures needed for the common case.
-- **Community-powered coverage.** Some applications need custom detection logic (specific registry keys, non-standard version storage, etc.). That's where community contributions matter — testing, security review, and gathering artefacts for the edge cases no single team can cover alone.
-- **Low overhead.** The system is designed so that adding coverage for a new product doesn't require writing and maintaining a detection rule from scratch every time.
-
-The goal is simple: give the security community a tool that's honest about what's on the machine and what's vulnerable — and make it sustainable to maintain.
-
----
-
-## Features
-
-| Category | Details |
-|---|---|
-| **Win32 / Registry Apps** | Enumerates `HKLM` and per-user `HKCU` Uninstall keys for all user profiles (loads offline hives via `RegLoadKey`). Results are grouped per-user with SID in the output. |
-| **MSI Products** | Queries the Windows Installer API (`MsiEnumProductsEx`) for system-wide and per-user MSI packages, including product code, package code, install source, and assignment type. |
-| **AppX / MSIX Packages** | Enumerates modern Store, sideloaded, and provisioned packages via the Windows Package Manager WinRT API. Captures publisher ID, resource ID, framework/bundle/dev-mode flags, and per-user ownership. |
-| **Installed Updates (KBs)** | Collects installed Windows updates with MSRC severity, KB article IDs, categories, and install dates via the Windows Update Agent COM API — the data needed to assess Patch Tuesday compliance. |
-| **Windows Services** | Lists all installed Win32 services with start type, running state, binary path, and service account. |
-| **OS Version Info** | Reads the `ntoskrnl.exe` file-version resource for accurate build/UBR data (maps directly to specific Patch Tuesday cumulative updates); detects processor architecture. |
-| **Machine & Network Info** | Collects NetBIOS name, DNS/FQDN, and local IP addresses (IPv4 + IPv6). |
-| **User Profiles** | Enumerates all local user profiles (SID, profile path, hive-loaded state). |
-| **Process Tracking** | Real-time process execution monitoring via ETW (`Microsoft-Windows-Kernel-Process`) with automatic Sysmon event-log fallback. Captures image path, command line, user SID/username, parent process (PID + image path), and PE file version. Includes point-in-time snapshot (`CreateToolhelp32Snapshot`) to catch processes running before the ETW session started. Service processes are excluded (by SCM PID, `services.exe`/`svchost.exe` parentage, and managed-path prefixes). Deduplication, per-event diagnostics, and shutdown flush of buffered data before service stop. |
-| **Persistent Machine ID** | Generates a cryptographically unique `SPECTRA-{GUID}` identifier stored in the registry, surviving reboots and reinstalls. |
-| **VSS Snapshots** | RAII-managed Volume Shadow Copy snapshots for safe, consistent reads of locked system files. |
-
-### Patch Tuesday Coverage
-
-Spectra already collects the data needed to evaluate Patch Tuesday compliance on every Windows endpoint:
-
-- **OS build and UBR** from the `ntoskrnl.exe` file-version resource — this maps 1:1 to specific cumulative updates, making it possible to determine exactly which monthly rollup is installed without relying on KB enumeration alone.
-- **All installed KBs** with MSRC severity ratings (`Critical`, `Important`, etc.), update categories, and installation timestamps — queried directly from the local Windows Update Agent datastore, no WSUS or network connectivity required.
-- **Update history enrichment** — cross-references installed updates with the WUA history to capture precise install dates and operation result codes.
-
-Iris uses this data to correlate against Microsoft's published Patch Tuesday advisories and the NVD, identifying which security updates are missing and what CVEs are exposed as a result.
-
----
-
-## Architecture
-
-### Spectra Sensor for Windows
-
-```
 ┌─────────────────────────────────────────────────────┐
 │                  Main.cpp (Entry Point)             │
 │   /install · /upgrade · /uninstall · /console · SCM │
@@ -145,16 +139,75 @@ Iris uses this data to correlate against Microsoft's published Patch Tuesday adv
    │  └────────────┘  └───────────────────┘   │
    └──────────────────┬───────────────────────┘
                       │
-              ┌───────▼───────┐
-              │  JSON Output  │
-              │ inventory.json│
-              │ processes.json│
-              └───────────────┘
+              ┌───────▼────────────┐
+              │  JSON Output        │
+              │ inventory.json      │
+              │ processes.json      │
+              │ mspt_inventory.json │
+              └─────────────────────┘
 ```
+---
 
-The application is a single native C++ executable (`Panoptes.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
+This repository currently contains:
+
+> **Spectra Sensor for Windows**
+
+### Spectra Sensor for Windows
+
+#### Features
+
+- Deep system inventory (Win32/MSI/AppX, processes, services, updates)  
+- Artefact collection even when patch data is missing  
+- ETW-based process tracking  
+- JSON output for ingestion into SIEM, data lakes, or analytics pipelines  
+- Supports querying and CVE correlation (once Iris backend is ready)
+- The application is a single native C++ executable (`Panoptes-Spectra.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
+
+#### Using Spectra Today
+
+> **Note:** Iris is currently under active development. In the meantime, the structured JSON inventory produced by Spectra can be ingested into your existing SIEM, data lake, CMDB, or analytics pipeline.  
+> This allows you to immediately query your environment for affected versions, analyse CVE exposure, and build custom correlation logic — even before the full Panoptes backend is deployed.
 
 ---
+
+
+### 4. Artefact Collection Even When Patch Data Is Missing
+
+If patch information cannot be determined:
+
+Spectra still collects artefacts answering:
+
+- On which systems is this application present?  
+- How many instances exist?  
+- Where is it running?  
+- What signals are available?  
+
+These artefacts can be used in multiple ways:
+
+- Community members (or in-house teams) can create reusable detection rules based on them.  
+- Security teams can run their own queries against inventory data — either within existing data sources (by ingesting Spectra JSON) or, once Iris backend is available, via Iris.
+
+---
+
+# Iris (Backend Correlation Engine)
+
+**Iris** correlates Spectra inventory data against:
+
+- NVD  
+- Vendor advisories  
+- Patch Tuesday releases  
+- Other vulnerability sources  
+
+Instead of signature-per-CVE, Iris:
+
+- Correlates versions automatically  
+- Maps inventory against vulnerability ranges  
+- Reduces rule-per-CVE detection  
+
+> One intelligent rule per application, not one rule per CVE.
+
+---
+
 
 ## System Requirements
 
@@ -287,6 +340,7 @@ The service produces two JSON files per collection cycle in the configured outpu
 |---|---|
 | `inventory.json` | Machine identity, network info, per-user application inventory (Win32/MSI/AppX grouped by user with SID), OS version (via `ntoskrnl.exe`), installed updates with MSRC metadata, Windows services, and process tracking summary. |
 | `processes.json` | Non-service processes observed via real-time ETW monitoring + point-in-time snapshot, with image path, command line, user, parent process, PE file version, and full tracker diagnostics. |
+| `mspt_inventory.json` | *(Future)* Inventory of Microsoft-supplied software and patches collected via the Microsoft Product and Service Tag (MPST) API. |
 
 ### Sample `inventory.json` structure
 
@@ -473,20 +527,59 @@ Detailed guides are available in the [`docs/`](docs/) directory:
 
 ---
 
-## Contributing
+# Core Contributors
 
-Panoptes is a community-driven project. Contributions are welcome in many forms:
+## Vaibhav Kakade
+- 💼 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Vaibhav%20Kakade-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/vgkakade/)
+- 𝕏 [![X](https://img.shields.io/badge/X-@vk_appledore-000000?logo=x&logoColor=white)](https://x.com/vk_appledore)
+- 🧑‍💻 [![GitHub](https://img.shields.io/badge/GitHub-vkappledore-181717?logo=github&logoColor=white)](https://github.com/vkappledore/)
 
-- **Code** — New collection modules, bug fixes, performance improvements.
-- **Testing** — Run Spectra on diverse environments and report what it finds (or misses).
-- **Security review** — Audit the codebase, suggest hardening improvements.
-- **Application artefacts** — Help document where specific applications store their version and patch information (registry keys, file paths, installer metadata). This is the kind of work that scales only with community support — no single team can procure and reverse-engineer every application out there.
-- **Documentation** — Improve guides, add examples, translate.
+## Sanoop Thomas
+- 💼 [![LinkedIn](https://img.shields.io/badge/LinkedIn-s4n7h0-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/s4n7h0/)
+- 𝕏 [![X](https://img.shields.io/badge/X-@s4n7h0-000000?logo=x&logoColor=white)](https://x.com/s4n7h0)
+- 🧑‍💻 [![GitHub](https://img.shields.io/badge/GitHub-s4n7h0-181717?logo=github&logoColor=white)](https://github.com/s4n7h0/)
 
-If you find this project useful and want to help close the gaps that commercial scanners leave open, we'd be glad to have you.
+## Narendra Shinde
+- 💼 [![LinkedIn](https://img.shields.io/badge/LinkedIn-narendrashinde-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/narendrashinde/)
+- 𝕏 [![X](https://img.shields.io/badge/X-@nushinde-000000?logo=x&logoColor=white)](https://x.com/nushinde)
+- 🧑‍💻 [![GitHub](https://img.shields.io/badge/GitHub-Nushinde-181717?logo=github&logoColor=white)](https://github.com/Nushinde)
+
+## Kapil Khot
+- 💼 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Kapil%20Khot-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/kapil-khot-50466952/)
+- 𝕏 [![X](https://img.shields.io/badge/X-@kapil_khot-000000?logo=x&logoColor=white)](https://x.com/kapil_khot)
+- 🧑‍💻 [![GitHub](https://img.shields.io/badge/GitHub-SlidingWindow-181717?logo=github&logoColor=white)](https://github.com/SlidingWindow)
+---
+
+# Contributing
+
+Community contributions are welcome.
+
+If you have:
+
+- Detection artefacts  
+- Version mapping improvements  
+- Edge-case installation samples  
+- Performance optimisations  
+- API improvements
+- Test bed and/or test cases
+
+Open an issue or submit a pull request.
+
+Let’s build something that actually sees everything.
+
 
 ---
 
-## License
+# Licensing
 
-Proprietary — © Panoptes Security. All rights reserved.
+Panoptes is licensed under the **GNU General Public License v3 (GPLv3)**.
+
+This means:
+
+- You are free to **use, modify, and distribute** Panoptes.
+- Any modified or derivative works must also be licensed under **GPLv3**.
+- See the [`LICENSE`](LICENSE) file for full terms.
+
+For more details on GPLv3, visit: [https://www.gnu.org/licenses/gpl-3.0.en.html](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
+---
