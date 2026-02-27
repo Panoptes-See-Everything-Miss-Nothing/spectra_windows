@@ -1,9 +1,12 @@
-<p align="center">
-  <img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="200">
-</p>
-
-<h1 align="center">Panoptes</h1>
-<p align="center"><em>See Everything. Miss Nothing.</em></p>
+<div align="center">
+<table><tbody><tr>
+<td><img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="160"></td>
+<td>
+<h1>Panoptes</h1>
+<p><em>See Everything. Miss Nothing.</em></p>
+</td>
+</tr></tbody></table>
+</div>
 
 <p align="center">
   <a href="https://en.cppreference.com/w/cpp/20"><img src="https://img.shields.io/badge/C%2B%2B-20-blue.svg" alt="C++20"></a>
