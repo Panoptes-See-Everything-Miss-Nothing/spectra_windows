@@ -60,7 +60,6 @@ Most vulnerability scanners depend heavily on:
 
 - Command execution  
 - Pattern-based detection  
-- Patch presence assumptions  
 - Signature-per-CVE models  
 
 These approaches introduce:
@@ -133,9 +132,9 @@ Panoptes is modular:
    │  ┌────────────┐  ┌───────────────────┐   │
    │  │ Win32Apps   │  │ WinAppXPackages   │   │
    │  │ MsiApps     │  │ AppXPackages      │   │
-   │  │ InstalledUp │  │ WindowsServices   │   │
+   │  │ InstalledUpdates │  │ WindowsServices   │   │
    │  │ OsVersion   │  │ ProcessTracker    │   │
-   │  │ MachineInfo │  │ UserProfiles      │   │
+   │  │ MachineInfo ... │  │ UserProfiles ...     │   │
    │  └────────────┘  └───────────────────┘   │
    └──────────────────┬───────────────────────┘
                       │
@@ -162,7 +161,7 @@ This repository currently contains:
 - JSON output for ingestion into SIEM, data lakes, or analytics pipelines  
 - Supports querying and CVE correlation (once Iris backend is ready)
 - The application is a single native C++ executable (`Panoptes-Spectra.exe`) that can run as a **Windows Service** (periodic collection) or in **console mode** (one-shot collection).
-- Uses Volume Shadow Copy (VSS) to read registry hives offline for all users on the system even if they are not currently logged in.
+- Uses Volume Shadow Copy (VSS) to safely mount and inspect offline registry hives to perform full per-user inventory even for inactive or logged-out accounts.
 
 #### Using Spectra Today
 
@@ -236,7 +235,7 @@ Instead of signature-per-CVE, Iris:
 1. Open `Panoptes.sln`.
 2. Select the desired configuration (`Release|x64` recommended).
 3. Build the solution (**Ctrl+Shift+B**).
-4. The output binary is located at `bin\x64\Release\Panoptes.exe`.
+4. The output binary is located at `bin\x64\Release\Panoptes-Spectra.exe`.
 
 ### Building from the command line
 
@@ -251,7 +250,7 @@ msbuild Panoptes.sln /p:Configuration=Release /p:Platform=x64
 ## Usage
 
 ```powershell
-Panoptes.exe [option]
+Panoptes-Spectra.exe [option]
 
 Options:
   /install      Install as a Windows service (auto-upgrades if already installed)
@@ -267,7 +266,7 @@ Options:
 
 ```powershell
 # Run as SYSTEM for full visibility (Administrator is NOT sufficient)
-psexec -s -i .\Panoptes.exe /console
+psexec -s -i .\Panoptes-Spectra.exe /console
 ```
 
 ---
@@ -278,7 +277,7 @@ psexec -s -i .\Panoptes.exe /console
 
 ```powershell
 # Run from an elevated (Administrator) prompt
-.\Panoptes.exe /install
+.\Panoptes-Spectra.exe /install
 ```
 
 This will:
@@ -296,13 +295,13 @@ This will:
 sc start PanoptesSpectra      # Start
 sc stop  PanoptesSpectra      # Stop
 sc query PanoptesSpectra      # Check status
-.\Panoptes.exe /uninstall   # Uninstall
+.\Panoptes-Spectra.exe /uninstall   # Uninstall
 ```
 
 ### Upgrade in-place
 
 ```powershell
-.\Panoptes.exe /upgrade
+.\Panoptes-Spectra.exe /upgrade
 ```
 
 Replaces the binary and re-applies hardening while preserving the Machine ID, registry configuration, logs, and output data.
@@ -354,6 +353,23 @@ Real Spectra output from two endpoints is included in [`spectra_inventory_sample
 
 ---
 
+### Logging
+
+Spectra writes operational logs to `spectra_log.txt`:
+
+| Mode | Log location |
+|---|---|
+| **Service** | `C:\ProgramData\Panoptes\Spectra\Logs\spectra_log.txt` |
+| **Console** | Current working directory |
+
+Logs include timestamped entries for collection cycle events, API errors, module failures, and ETW session diagnostics. Enable verbose logging for additional detail:
+
+```powershell
+    reg add "HKLM\SOFTWARE\Panoptes\Spectra" /v EnableDetailedLogging /t REG_DWORD /d 1 /f
+```
+
+---
+
 ## Security
 
 Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
@@ -384,7 +400,7 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │   ├── branding/
 │   │   └── panoptes-logo.png            # Platform logo (README, docs, GitHub social preview)
 │   ├── icons/
-│   │   ├── spectra.ico                  # Multi-res icon embedded in Panoptes.exe
+│   │   ├── spectra.ico                  # Multi-res icon embedded in Panoptes-Spectra.exe
 │   │   ├── spectra-alt.ico              # Alternate Spectra icon variant
 │   │   └── iris.ico                     # Iris backend icon (parked until Iris repo exists)
 │   └── icons-macos/
