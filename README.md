@@ -34,7 +34,7 @@ Panoptes exists because of that question.
 ## Project Status
 
 - **Spectra Windows sensor:** Production-capable and actively maintained  
-- **Iris backend:** Under active development  
+- **Iris backend:** Under active development. [See](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris)
 - **Linux/macOS sensors:** Planned  
 
 ---
@@ -85,7 +85,7 @@ Panoptes takes a fundamentally different approach:
 Panoptes is modular:
 
 - **Spectra** → Sensor layer (endpoint inventory collection)  
-- **Iris** → Backend correlation and intelligence engine  
+- **Iris** → Backend correlation and intelligence engine. [See](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris)  
 - *(Future)* Web UI / API / Database components  
 
 ```
@@ -208,6 +208,8 @@ Instead of signature-per-CVE, Iris:
 - Correlates versions automatically  
 - Maps inventory against vulnerability ranges  
 - Reduces rule-per-CVE detection  
+
+For Iris source code and other information, please check Iris repository [here](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris).
 
 > One intelligent rule per application, not one rule per CVE.
 
@@ -522,8 +524,16 @@ If you have:
 - Performance optimisations  
 - API improvements
 - Test bed and/or test cases
+- Access to vendor-specific advisories that are only available to licensed customers (for validation and correlation testing purposes — proprietary content will not be redistributed)
+   - Some enterprise products publish vulnerability advisories exclusively through customer portals. 
+   - If you are a licensed customer and are willing to help validate version-to-CVE mappings, your collaboration can significantly improve coverage for those platforms.
+      - Contributors are responsible for ensuring they have appropriate vendor approval and rights to share any non-public advisory information.
 
 Open an issue or submit a pull request.
+
+For vulnerabilities, security misconfigurations, or sensitive disclosures, please submit a private issue (feature coming soon) or contact **Kapil Khot** directly.
+
+We take responsible disclosure seriously and will ensure proper acknowledgment and credit for all valid findings.
 
 Let’s build something that actually sees everything.
 
