@@ -234,6 +234,13 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
+    <None Include="docs\DEPLOYMENT_CHECKLIST.md" />
+    <None Include="docs\MACHINE_ID_IMPLEMENTATION.md" />
+    <None Include="docs\PACKAGE_MANAGER_API_MIGRATION.md" />
+    <None Include="docs\QUICK_REFERENCE.md" />
+    <None Include="docs\SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md" />
+    <None Include="docs\VSS_IMPLEMENTATION_SUMMARY.md" />
+    <None Include="docs\WINDOWS_SERVICE_GUIDE.md" />
     <None Include="IMPLEMENTATION_SUMMARY.md" />
     <None Include="MACHINE_ID_IMPLEMENTATION.md" />
     <None Include="PACKAGE_MANAGER_API_MIGRATION.md" />
