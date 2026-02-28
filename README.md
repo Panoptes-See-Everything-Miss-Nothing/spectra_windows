@@ -14,6 +14,11 @@
 
 ---
 
+<p align="center">
+  Spectra Sensor for Windows is a part of the <strong>Panoptes Platform</strong>.<br>
+  🔎 Check the <a href="https://github.com/Panoptes-See-Everything-Miss-Nothing">Panoptes homepage here</a>.
+</p>
+
 # Introduction
 
 **Panoptes** is a community-driven vulnerability management platform built to eliminate blind spots that traditional scanners leave behind.
