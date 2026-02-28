@@ -365,7 +365,7 @@ Spectra writes operational logs to `spectra_log.txt`:
 Logs include timestamped entries for collection cycle events, API errors, module failures, and ETW session diagnostics. Enable verbose logging for additional detail:
 
 ```powershell
-    reg add "HKLM\SOFTWARE\Panoptes\Spectra" /v EnableDetailedLogging /t REG_DWORD /d 1 /f
+reg add "HKLM\SOFTWARE\Panoptes\Spectra" /v EnableDetailedLogging /t REG_DWORD /d 1 /f
 ```
 
 ---
