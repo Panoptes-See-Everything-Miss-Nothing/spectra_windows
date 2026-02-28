@@ -396,12 +396,14 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 ├── README.md
 ├── .gitignore
 │
+├── .github/
+│   └── copilot-instructions.md          # Copilot coding standards and project rules
+│
 ├── assets/
 │   ├── branding/
 │   │   └── panoptes-logo.png            # Platform logo (README, docs, GitHub social preview)
 │   ├── icons/
 │   │   ├── spectra.ico                  # Multi-res icon embedded in Panoptes-Spectra.exe
-│   │   ├── spectra-alt.ico              # Alternate Spectra icon variant
 │   │   └── iris.ico                     # Iris backend icon (parked until Iris repo exists)
 │   └── icons-macos/
 │       └── spectra.icns                 # macOS icon (parked until macOS sensor repo exists)
@@ -411,7 +413,8 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │   ├── WindowsEnum.h            # Aggregate include for all data-collection modules
 │   │
 │   ├── Resources/
-│   │   └── Panoptes.rc          # Win32 resource script (application icon)
+│   │   ├── Panoptes.rc          # Win32 resource script (application icon, version info)
+│   │   └── Version.h            # Single-source version and product metadata defines
 │   │
 │   ├── MachineInfo.cpp/.h       # NetBIOS name, DNS/FQDN, IP addresses
 │   ├── OsVersionInfo.cpp/.h     # OS display name, ntoskrnl version, CPU arch
@@ -440,19 +443,12 @@ Panoptes Spectra is designed with defence-in-depth for enterprise deployment:
 │
 ├── docs/
 │   ├── DEPLOYMENT_CHECKLIST.md
-│   ├── IMPLEMENTATION_COMPLETE.md
-│   ├── IMPLEMENTATION_SUMMARY.md
 │   ├── MACHINE_ID_IMPLEMENTATION.md
 │   ├── PACKAGE_MANAGER_API_MIGRATION.md
-│   ├── QUICKSTART.md
 │   ├── QUICK_REFERENCE.md
-│   ├── REBUILD_INSTRUCTIONS.md
 │   ├── SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md
 │   ├── VSS_IMPLEMENTATION_SUMMARY.md
-│   ├── WINDOWS7_DELAY_LOAD_REQUIRED.md
-│   ├── WINDOWS_SERVICE_GUIDE.md
-│   ├── WINDOWS_VERSION_COMPATIBILITY.md
-│   └── WINRT_SETUP_INSTRUCTIONS.md
+│   └── WINDOWS_SERVICE_GUIDE.md
 │
 ├── spectra_inventory_samples/       # Sample Spectra output from real endpoints
 │   ├── pc1/
@@ -478,18 +474,11 @@ Detailed guides are available in the [`docs/`](docs/) directory:
 |---|---|
 | [WINDOWS_SERVICE_GUIDE.md](docs/WINDOWS_SERVICE_GUIDE.md) | Full service implementation guide, access-control matrix, and troubleshooting |
 | [DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | Step-by-step deployment and verification checklist |
-| [QUICKSTART.md](docs/QUICKSTART.md) | 5-minute quick-start guide |
 | [QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | Command cheat sheet |
-| [REBUILD_INSTRUCTIONS.md](docs/REBUILD_INSTRUCTIONS.md) | How to rebuild while the service is running |
-| [WINDOWS_VERSION_COMPATIBILITY.md](docs/WINDOWS_VERSION_COMPATIBILITY.md) | OS compatibility matrix for modern app enumeration |
 | [MACHINE_ID_IMPLEMENTATION.md](docs/MACHINE_ID_IMPLEMENTATION.md) | Machine ID design and implementation details |
 | [VSS_IMPLEMENTATION_SUMMARY.md](docs/VSS_IMPLEMENTATION_SUMMARY.md) | Volume Shadow Copy integration summary |
 | [SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md](docs/SECURE_TEMP_DIRECTORY_IMPROVEMENTS.md) | Secure temporary directory design |
-| [IMPLEMENTATION_COMPLETE.md](docs/IMPLEMENTATION_COMPLETE.md) | Windows service implementation completion summary |
-| [IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) | Machine ID, VSS, and feature implementation details |
 | [PACKAGE_MANAGER_API_MIGRATION.md](docs/PACKAGE_MANAGER_API_MIGRATION.md) | Migration from registry-based to WinRT Package Manager API |
-| [WINDOWS7_DELAY_LOAD_REQUIRED.md](docs/WINDOWS7_DELAY_LOAD_REQUIRED.md) | Delay-load configuration for Windows 7 compatibility |
-| [WINRT_SETUP_INSTRUCTIONS.md](docs/WINRT_SETUP_INSTRUCTIONS.md) | C++/WinRT setup and build instructions |
 
 ---
 
