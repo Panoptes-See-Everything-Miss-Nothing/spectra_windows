@@ -143,6 +143,9 @@
     <ClInclude Include="src\ProcessTracker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Resources\Version.h">
+      <Filter>Resource Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="README_RUN_AS_SYSTEM.md" />

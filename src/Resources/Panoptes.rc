@@ -1,4 +1,41 @@
 // Panoptes.rc — Application resources
 
-// Application icon (lowest ordinal = default icon for the EXE)
+#include "Version.h"
+#include <winresrc.h>
+
+// ── Application icon (lowest ordinal = default icon for the EXE) ──────
 1 ICON "..\\..\\assets\\icons\\spectra.ico"
+
+// ── Version information (Properties → Details tab) ───────────────────
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION    SPECTRA_VERSION_CSV
+    PRODUCTVERSION SPECTRA_VERSION_CSV
+    FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+    FILEFLAGS      VS_FF_DEBUG
+#else
+    FILEFLAGS      0x0L
+#endif
+    FILEOS         VOS_NT_WINDOWS32
+    FILETYPE       VFT_APP
+    FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"   // U.S. English, Unicode
+        BEGIN
+            VALUE "CompanyName",      SPECTRA_COMPANY_NAME
+            VALUE "FileDescription",  SPECTRA_FILE_DESCRIPTION
+            VALUE "FileVersion",      SPECTRA_VERSION_STR
+            VALUE "InternalName",     SPECTRA_INTERNAL_NAME
+            VALUE "LegalCopyright",   SPECTRA_COPYRIGHT
+            VALUE "OriginalFilename", SPECTRA_ORIGINAL_NAME
+            VALUE "ProductName",      SPECTRA_PRODUCT_NAME
+            VALUE "ProductVersion",   SPECTRA_VERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200   // U.S. English, Unicode
+    END
+END
