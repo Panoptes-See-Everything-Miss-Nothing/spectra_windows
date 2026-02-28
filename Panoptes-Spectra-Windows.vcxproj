@@ -75,25 +75,31 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <!-- Version and architecture properties for output binary naming -->
+  <PropertyGroup>
+    <SpectraVersion>1.0.0</SpectraVersion>
+    <SpectraArch Condition="'$(Platform)'=='Win32'">x86</SpectraArch>
+    <SpectraArch Condition="'$(Platform)'=='x64'">x64</SpectraArch>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <TargetName>$(SolutionName)</TargetName>
+    <TargetName>Panoptes-Spectra-v$(SpectraVersion)-$(SpectraArch)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <TargetName>$(SolutionName)</TargetName>
+    <TargetName>Panoptes-Spectra-v$(SpectraVersion)-$(SpectraArch)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <TargetName>$(SolutionName)</TargetName>
+    <TargetName>Panoptes-Spectra-v$(SpectraVersion)-$(SpectraArch)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)bin\intermediates\$(Platform)\$(Configuration)\</IntDir>
-    <TargetName>$(SolutionName)</TargetName>
+    <TargetName>Panoptes-Spectra-v$(SpectraVersion)-$(SpectraArch)</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -224,6 +230,7 @@
     <ClInclude Include="src\Service\ServiceTamperProtection.h" />
     <ClInclude Include="src\WindowsServices.h" />
     <ClInclude Include="src\ProcessTracker.h" />
+    <ClInclude Include="src\Resources\Version.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
