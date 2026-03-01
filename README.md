@@ -19,7 +19,7 @@
 
 Spectra is the sensor layer of the Panoptes platform.
 
-It runs on endpoints and collects high-fidelity system inventory data using native operating system APIs. Spectra does not rely on command execution or signature-per-CVE detection. Instead, it focuses on accurate inventory collection — applications, patches, processes, services, artefacts — and produces structured JSON for downstream correlation.
+It runs on endpoints and collects high-fidelity system inventory data using native operating system APIs. Spectra does not rely on command execution or signature-per-CVE detection. Instead, it focuses on accurate inventory collection — applications, patches, processes, services, files or filenames, artefacts — and produces structured JSON for downstream correlation.
 
 Spectra, The Observer — sees what is actually present on the machine.
 
