@@ -1,12 +1,8 @@
-<p align="center">
-  <img src="assets/branding/panoptes-logo.png" alt="Panoptes Logo" width="200">
-</p>
-
-<h1 align="center">Panoptes</h1>
-<p align="center"><em>See Everything. Miss Nothing.</em></p>
+<h1 align="center">Sepctra</h1>
+<p align="center"><em>The Observer</em></p>
 
 <p align="center">
-  <a href="https://en.cppreference.com/w/cpp/20"><img src="https://img.shields.io/badge/C%2B%2B-20-blue.svg" alt="C++20"></a>
+  <a href="https://docs.python.org/3/"><img src="https://img.shields.io/badge/Python-3-blue.svg" alt="Python 3"></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/platform-Windows%2010%2B-0078d4.svg" alt="Platform"></a>
   <a href="#build"><img src="https://img.shields.io/badge/arch-x64%20%7C%20x86-green.svg" alt="Architecture"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-GPLv3-lightgrey.svg" alt="License"></a>
@@ -15,33 +11,56 @@
 ---
 
 <p align="center">
-  Spectra Sensor for Windows is a part of the <strong>Panoptes Platform</strong>.<br>
+  Spectra Sensor is a part of the <strong>Panoptes Platform</strong>.<br>
   🔎 Check the <a href="https://github.com/Panoptes-See-Everything-Miss-Nothing">Panoptes homepage here</a>.
 </p>
 
-# Introduction
+# Spectra
 
-**Panoptes** is a community-driven vulnerability management platform built to eliminate blind spots that traditional scanners leave behind.
+Spectra is the sensor layer of the Panoptes platform.
 
-If you've ever asked:
+It runs on endpoints and collects high-fidelity system inventory data using native operating system APIs. Spectra does not rely on command execution or signature-per-CVE detection. Instead, it focuses on accurate inventory collection — applications, patches, processes, services, artefacts — and produces structured JSON for downstream correlation.
 
-> *"How did this vulnerability exist on the machine when the scanner said it was clean?"*
+Spectra, The Observer — sees what is actually present on the machine.
 
-Panoptes exists because of that question.
+The data it collects is consumed by [Iris](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris), the backend intelligence engine, which correlates inventory against vulnerability feeds to determine actual exposure.
 
+Together:
+
+- **Spectra → Observes**  
+- **[Iris](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris) → Correlates**  
+- **[Panoptes](https://github.com/Panoptes-See-Everything-Miss-Nothing) → Sees Everything. Miss Nothing**
+  
 ---
 
-## Project Status
+## Why Spectra + Iris Reduces Dependency on CVE Signatures
 
-- **Spectra Windows sensor:** Production-capable and actively maintained  
-- **Iris backend:** Under active development. [See](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris)
-- **Linux/macOS sensors:** Planned  
+Traditional vulnerability scanners often require a dedicated detection rule or signature for every new CVE. This creates:
 
----
+- Dependency on vendor update cycles  
+- Delays between CVE disclosure and usable detection  
+- Continuous rule maintenance overhead  
+- Coverage gaps when vendors choose not to support niche or less common products  
+
+In some cases, scanner vendors may decline to create detection logic because:
+
+- The product is not widely deployed  
+- They do not officially support it  
+- They cannot reproduce it in their lab  
+- It falls outside their commercial priorities  
+
+**Spectra removes that dependency model.**
+
+Because Spectra focuses on collecting accurate system artefacts rather than per-CVE signatures, detection logic can be written around the **product itself**, not a single vulnerability.
+
+If you care about a specific application and Spectra collects the relevant artefacts, you can define correlation logic once. Iris can then evaluate **future CVEs affecting that product automatically** — without requiring new signatures for every disclosure.
+
+In most cases, you write the product intelligence once — and future vulnerabilities become a **data correlation problem, not a rule engineering problem**.
+
+Control shifts back to the organisation.
 
 # Table of Contents
 
-- [Why Panoptes?](#why-panoptes)
 - [Architecture Overview](#architecture-overview)
 - [Features](#features)
 - [System Requirements](#system-requirements)
@@ -59,22 +78,6 @@ Panoptes exists because of that question.
 
 ---
 
-# Why Panoptes?
-
-Most vulnerability scanners depend heavily on:
-
-- Command execution  
-- Pattern-based detection  
-- Signature-per-CVE models  
-
-These approaches introduce:
-
-- False negatives  
-- Detection gaps  
-- Rule maintenance overhead  
-- Security review burden  
-
-Panoptes takes a fundamentally different approach:
 
 > **Inventory first. Correlate intelligently. Minimise blind spots.**
 
@@ -152,10 +155,6 @@ Panoptes is modular:
 ```
 ---
 
-This repository currently contains:
-
-> **Spectra Sensor for Windows**
-
 ### Spectra Sensor for Windows
 
 #### Features
@@ -191,27 +190,6 @@ These artefacts can be used in multiple ways:
 
 - Community members (or in-house teams) can create reusable detection rules based on them.  
 - Security teams can run their own queries against inventory data — either within existing data sources (by ingesting Spectra JSON) or, once Iris backend is available, via Iris.
-
----
-
-# Iris (Backend Correlation Engine)
-
-**Iris** correlates Spectra inventory data against:
-
-- NVD  
-- Vendor advisories  
-- Patch Tuesday releases  
-- Other vulnerability sources  
-
-Instead of signature-per-CVE, Iris:
-
-- Correlates versions automatically  
-- Maps inventory against vulnerability ranges  
-- Reduces rule-per-CVE detection  
-
-For Iris source code and other information, please check Iris repository [here](https://github.com/Panoptes-See-Everything-Miss-Nothing/iris).
-
-> One intelligent rule per application, not one rule per CVE.
 
 ---
 
